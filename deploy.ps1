@@ -3,9 +3,13 @@ $ErrorActionPreference = 'Stop'
 # ============================================================
 #  Deploy GreenJob (NR-10) - Homologacao Hostinger
 #  Uso:  powershell -ExecutionPolicy Bypass -File deploy.ps1
-#  Reflete 100% dos arquivos locais no servidor (exceto itens
-#  preservados automaticamente: .env, .env.* e storage/prod).
-#  Roda migrations pendentes e limpa caches ao final.
+#
+#  Deploy incremental via git local (sem git no servidor):
+#   - 1o run: sobe TODOS os arquivos rastreados (sincronizacao).
+#   - runs seguintes: sobe SOMENTE o delta (git diff) desde a tag
+#     "deployed" (que aponta o ultimo estado enviado), aplica
+#     delecoes de arquivos rastreados, roda migrations e limpa cache.
+#  Nunca apaga .env, storage (uploads/logs/cache), vendor e dados do banco.
 # ============================================================
 
 $HostAddr   = 'u983733811@185.211.7.209'
@@ -17,61 +21,93 @@ $Plink      = 'C:\Program Files\PuTTY\plink.exe'
 $Pscp       = 'C:\Program Files\PuTTY\pscp.exe'
 $PhpRemote  = '/opt/alt/php83/usr/bin/php'
 
-$Payload    = Join-Path $env:TEMP 'nr10-deploy.tgz'
-$RemoteTmp  = '/tmp/nr10-deploy.tgz'
+$TmpDir     = Join-Path $env:TEMP 'nr10-deploy-delta'
+New-Item -ItemType Directory -Path $TmpDir -Force | Out-Null
+$Payload    = Join-Path $TmpDir 'nr10-deploy.tgz'
+$Deletions  = Join-Path $TmpDir 'nr10-deletions.list'
+$FileList   = Join-Path $TmpDir 'nr10-files.txt'
+$RemoteTgz  = '/tmp/nr10-deploy.tgz'
+$RemoteDel  = '/tmp/nr10-deletions.list'
 
-Write-Host '>>> 1/5 Empacotando projeto (sem node_modules, .env, storage/prod)...'
+function Write-ListFile([string]$path, [string[]]$lines) {
+    $enc = New-Object System.Text.UTF8Encoding($false)
+    $content = (($lines | Where-Object { $_ } ) -join "`n")
+    if ($content.Length -gt 0) { $content += "`n" }
+    [System.IO.File]::WriteAllText($path, $content, $enc)
+}
+
+function Write-Phase([string]$msg) { Write-Host ">>> $msg" }
+
 Push-Location $LocalRoot
 try {
-    tar -a -c -z -f $Payload `
-        --exclude='vendor' `
-        --exclude='node_modules' `
-        --exclude='.git' `
-        --exclude='.env' `
-        --exclude='.env.*' `
-        --exclude='storage/app/private' `
-        --exclude='storage/logs' `
-        --exclude='storage/framework/cache' `
-        --exclude='storage/framework/sessions' `
-        --exclude='storage/framework/views' `
-        --exclude='storage/framework/testing' `
-        --exclude='storage/debugbar' `
-        --exclude='probe_status.php' `
-        --exclude='deploy.ps1' `
-        .
-    if ($LASTEXITCODE -ne 0) { throw "tar falhou (exit $LASTEXITCODE)" }
-} finally {
-    Pop-Location
-}
-$size = (Get-Item $Payload).Length
-Write-Host "    Payload: $([math]::Round($size/1MB,1)) MB"
+    Write-Phase '1/6 Snapshot do trabalho (git commit automatico)...'
+    & git add -A
+    if ($LASTEXITCODE -ne 0) { throw 'git add falhou' }
+    & git -c user.name="Deploy Snapshot" -c user.email="deploy@snapshot.local" commit -m "deploy snapshot $(Get-Date -Format 'yyyy-MM-dd HH:mm')" --no-verify 2>$null
 
-Write-Host '>>> 2/5 Enviando pacote via SCP...'
-& $Pscp -pw $Pass -P $Port $Payload "$HostAddr`:$RemoteTmp"
-if ($LASTEXITCODE -ne 0) { throw 'SCP falhou' }
+    Write-Phase '2/6 Calculando delta (git diff desde a tag deployed)...'
+    & git rev-parse -q --verify refs/tags/deployed
+    if ($LASTEXITCODE -eq 0) {
+        $mode = 'delta'
+        $oldSha = (& git rev-parse refs/tags/deployed).Trim()
+        $changed = @(& git diff --name-only --diff-filter=ACMRTUB "$oldSha" HEAD)
+        $deleted = @(& git diff --name-only --diff-filter=D "$oldSha" HEAD)
+    } else {
+        $mode = 'full (sincronizacao inicial)'
+        $changed = @(& git ls-files) | Where-Object { $_ }
+        $deleted = @()
+    }
 
-Write-Host '>>> 3/5 Extraindo no servidor...'
-& $Plink -ssh $HostAddr -P $Port -pw $Pass -batch "export PATH=/usr/bin:/bin:/usr/local/bin; cd $RemoteDir && tar -xzf $RemoteTmp && rm -f $RemoteTmp"
-if ($LASTEXITCODE -ne 0) { throw 'Extracao falhou' }
+    $changed = @($changed | Where-Object { $_ -ne 'deploy.ps1' })
+    $deleted = @($deleted | Where-Object { $_ -ne 'deploy.ps1' })
+    Write-ListFile $FileList $changed
+    if ($deleted.Count -gt 0) { Write-ListFile $Deletions $deleted }
 
-Write-Host '>>> 4/5 Aplicando migrations e limpeza de caches...'
-& $Plink -ssh $HostAddr -P $Port -pw $Pass -batch "export PATH=/usr/bin:/bin:/usr/local/bin; cd $RemoteDir && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1"
-if ($LASTEXITCODE -ne 0) { throw 'Passo de manutencao falhou' }
+    Write-Host "    Modo: $mode | arquivos a subir: $($changed.Count) | a remover: $($deleted.Count)"
 
-Write-Host '>>> 5/5 Validando paginas publicas...'
-$base = 'https://legacyit.com.br/clientes/greenjob/app/gestaonr10'
-foreach ($p in @('/login', '/forgot-password')) {
-    try {
-        $r = Invoke-WebRequest -Uri "$base$p" -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30 -ErrorAction Stop
-        Write-Host "    $p -> $($r.StatusCode)"
-    } catch {
-        if ($_.Exception.Response) {
-            Write-Host "    $p -> $([int]$_.Exception.Response.StatusCode) (redirect)"
-        } else {
-            Write-Host "    $p -> ERRO: $($_.Exception.Message)"
+    Write-Phase '3/6 Empacotando somente os arquivos alterados...'
+    tar -a -c -z -f $Payload -T $FileList
+    if ($LASTEXITCODE -ne 0) { throw 'tar (delta) falhou' }
+    $size = (Get-Item $Payload).Length
+    Write-Host "    Payload: $([math]::Round($size/1KB,1)) KB"
+
+    Write-Phase '4/6 Enviando pacote via SCP...'
+    & $Pscp -pw $Pass -P $Port -q $Payload "$HostAddr`:$RemoteTgz"
+    if ($LASTEXITCODE -ne 0) { throw 'SCP do pacote falhou' }
+    if ($deleted.Count -gt 0) {
+        & $Pscp -pw $Pass -P $Port -q $Deletions "$HostAddr`:$RemoteDel"
+        if ($LASTEXITCODE -ne 0) { throw 'SCP da lista de delecoes falhou' }
+    }
+
+    Write-Phase '5/6 Extraindo no servidor, aplicando migrations e cache...'
+    $remote = "export PATH=/usr/bin:/bin:/usr/local/bin; cd $RemoteDir && tar -xzf $RemoteTgz"
+    if ($deleted.Count -gt 0) {
+        $remote += " && xargs -r rm -f < $RemoteDel"
+    }
+    $remote += " && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1 && rm -f $RemoteTgz $RemoteDel"
+    & $Plink -ssh $HostAddr -P $Port -pw $Pass -batch $remote
+    if ($LASTEXITCODE -ne 0) { throw 'Extracao/migracao falhou no servidor' }
+
+    Write-Phase '6/6 Marcando estado enviado (tag deployed) e validando paginas...'
+    & git tag -f deployed HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar a tag deployed' }
+
+    $base = 'https://legacyit.com.br/clientes/greenjob/app/gestaonr10'
+    foreach ($p in @('/login', '/forgot-password')) {
+        try {
+            $r = Invoke-WebRequest -Uri "$base$p" -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30 -ErrorAction Stop
+            Write-Host "    $p -> $($r.StatusCode)"
+        } catch {
+            if ($_.Exception.Response) {
+                Write-Host "    $p -> $([int]$_.Exception.Response.StatusCode) (redirect)"
+            } else {
+                Write-Host "    $p -> ERRO: $($_.Exception.Message)"
+            }
         }
     }
-}
 
-Write-Host '>>> Deploy concluido.'
-Remove-Item -LiteralPath $Payload -ErrorAction SilentlyContinue
+    Write-Host '>>> Deploy concluido.'
+} finally {
+    Pop-Location
+    Remove-Item -Recurse -Force $TmpDir -ErrorAction SilentlyContinue
+}
