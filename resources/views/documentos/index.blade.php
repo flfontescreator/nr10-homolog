@@ -1,0 +1,82 @@
+@extends('layouts.app')
+
+@section('title', 'Gestão de Documentos')
+
+@section('content')
+    <div class="page-header">
+        <div>
+            <h1>Gestão de Documentos</h1>
+            <p class="subtitle">Todos os arquivos anexados como evidências do cliente ativo.</p>
+        </div>
+    </div>
+
+    <div class="card">
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">
+            <a class="btn btn-sm {{ ! $activeSource ? 'btn' : 'btn-secondary' }}" href="{{ route('documentos.index') }}">Todos</a>
+            @foreach($sources as $source)
+                <a class="btn btn-sm {{ $activeSource === $source->value ? 'btn' : 'btn-secondary' }}"
+                   href="{{ route('documentos.index', ['source' => $source->value]) }}">
+                    {{ $source->label() }}
+                </a>
+            @endforeach
+        </div>
+
+        @if($documents->isEmpty())
+            <div class="docs-empty">Nenhum documento anexado ainda.</div>
+        @else
+            <div class="table-wrap">
+                <table class="grid">
+                    <thead>
+                        <tr>
+                            <th>Arquivo</th>
+                            <th>Módulo</th>
+                            <th>Item</th>
+                            <th>Enviado por</th>
+                            <th>Enviado em</th>
+                            <th>Tamanho</th>
+                            <th class="text-right">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($documents as $doc)
+                            <tr>
+                                <td>
+                                    <a href="{{ route('documentos.download', $doc) }}" title="{{ $doc->original_name }}">
+                                        {{ \Illuminate\Support\Str::limit($doc->original_name, 55) }}
+                                    </a>
+                                </td>
+                                <td>
+                                    @php($source = $doc->tenantItem->catalogItem->source ?? null)
+                                    @if($source)
+                                        <span class="badge {{ $source->value === 'cronograma' ? 'badge-blue' : ($source->value === 'prontuario' ? 'badge-green' : 'badge-neutral') }}">
+                                            {{ $source->label() }}
+                                        </span>
+                                    @else
+                                        <span class="muted">—</span>
+                                    @endif
+                                </td>
+                                <td>{{ $doc->tenantItem->catalogItem->code ?? '—' }}</td>
+                                <td>{{ $doc->uploader?->name ?? '—' }}</td>
+                                <td>{{ $doc->created_at->format('d/m/Y H:i') }}</td>
+                                <td>{{ $doc->humanSize() }}</td>
+                                <td class="text-right" style="white-space:nowrap">
+                                    <a class="btn btn-sm btn-secondary" href="{{ route('documentos.download', $doc) }}">Baixar</a>
+                                    @if(auth()->user()->canDeleteEvidence())
+                                        <form method="POST" action="{{ route('documentos.destroy', $doc) }}"
+                                              data-confirm="Excluir este documento?" style="display:inline">
+                                            @csrf
+                                            @method('DELETE')
+                                            <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
+                                        </form>
+                                    @endif
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="mt-4">{{ $documents->links() }}</div>
+        @endif
+    </div>
+@endsection
