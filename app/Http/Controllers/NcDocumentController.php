@@ -388,7 +388,6 @@ class NcDocumentController extends Controller
             if ($catalog && ! $catalog->is_section) {
                 $tenantItem = TenantItem::firstOrCreate(
                     ['tenant_id' => $tenantId, 'catalog_item_id' => $catalogItemId],
-                    ['setores' => $catalog && $catalog->setores ? array_values($catalog->setores) : null],
                 );
 
                 $tenantItemId = $tenantItem->id;

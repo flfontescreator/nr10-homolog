@@ -8,7 +8,8 @@ $ErrorActionPreference = 'Stop'
 #   - 1o run: sobe TODOS os arquivos rastreados (sincronizacao).
 #   - runs seguintes: sobe SOMENTE o delta (git diff) desde a tag
 #     "deployed" (que aponta o ultimo estado enviado), aplica
-#     delecoes de arquivos rastreados, roda migrations e limpa cache.
+#     delecoes de arquivos rastreados, faz backup do banco, roda
+#     migrations e limpa cache.
 #  Nunca apaga .env, storage (uploads/logs/cache), vendor e dados do banco.
 # ============================================================
 
@@ -79,12 +80,14 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'SCP da lista de delecoes falhou' }
     }
 
-    Write-Phase '5/6 Extraindo no servidor, aplicando migrations e cache...'
+    Write-Phase '5/6 Extraindo, backup do banco, migrations e cache...'
+    # Backup via command deploy:db-backup (mysqldump) antes do migrate; se
+    # falhar, o deploy aborta sem tocar no banco (fail-closed).
     $remote = "export PATH=/usr/bin:/bin:/usr/local/bin; cd $RemoteDir && tar -xzf $RemoteTgz"
     if ($deleted.Count -gt 0) {
         $remote += " && xargs -r rm -f < $RemoteDel"
     }
-    $remote += " && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1 && rm -f $RemoteTgz $RemoteDel"
+    $remote += " && $PhpRemote artisan deploy:db-backup --dir=`$HOME/deploy-backups 2>&1 && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1 && rm -f $RemoteTgz $RemoteDel"
     & $Plink -ssh $HostAddr -P $Port -pw $Pass -batch $remote
     if ($LASTEXITCODE -ne 0) { throw 'Extracao/migracao falhou no servidor' }
 
@@ -93,7 +96,9 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar a tag deployed' }
 
     $base = 'https://legacyit.com.br/clientes/greenjob/app/gestaonr10'
-    foreach ($p in @('/login', '/forgot-password')) {
+    # Paginas autenticadas respondem com redirect (302) para /login; um 500
+    # (ex.: ViteException ou view quebrada apos o deploy) aparece como ERRO.
+    foreach ($p in @('/login', '/forgot-password', '/cronograma', '/checklist/documentos', '/documentos')) {
         try {
             $r = Invoke-WebRequest -Uri "$base$p" -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30 -ErrorAction Stop
             Write-Host "    $p -> $($r.StatusCode)"

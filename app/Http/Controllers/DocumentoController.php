@@ -20,7 +20,13 @@ class DocumentoController extends Controller
         $source = $request->query('source');
 
         $query = Evidence::query()
-            ->with(['tenantItem.catalogItem', 'uploader', 'documents'])
+            ->with([
+                'tenantItem.catalogItem',
+                'uploader',
+                'documents',
+                'documentItems.tenantItem.catalogItem',
+                'tenantItems.catalogItem',
+            ])
             ->when($source, fn ($q) => $q->whereHas(
                 'tenantItem.catalogItem',
                 fn ($c) => $c->where('source', $source)

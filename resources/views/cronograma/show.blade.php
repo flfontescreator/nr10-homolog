@@ -33,7 +33,7 @@
         </h2>
 
         @if($canWrite)
-            <form method="POST" action="{{ route('cronograma.update', $item) }}">
+            <form method="POST" action="{{ $updateRoute }}">
                 @csrf
                 @method('PUT')
 

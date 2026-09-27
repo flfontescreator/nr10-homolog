@@ -690,6 +690,12 @@ table.grid tr:hover td {
     background: #f8fafc;
 }
 
+/* Grid de Gestão de Documentos: nenhum conteúdo das células pode estender a
+   largura da tabela (células clipam; colunas fixas do colgroup). */
+table.grid.docs-grid td {
+    overflow: hidden;
+}
+
 .section-row td {
     background: #eef2ff !important;
     font-weight: 700;

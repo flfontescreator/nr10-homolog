@@ -7,6 +7,7 @@ use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Collection;
 
 class Evidence extends Model
 {
@@ -101,6 +102,22 @@ class Evidence extends Model
             || $this->tenantItems()->exists();
     }
 
+    /**
+     * Itens do cronograma/plano (catalog items) aos quais este arquivo está
+     * relacionado, para os badges da coluna "Item" em Gestão de Documentos.
+     * Começa pela âncora e recebe os vínculos dos pivôs, sem duplicar.
+     */
+    public function relatedItems(): Collection
+    {
+        return collect()
+            ->merge($this->documentItems->map(fn ($di) => $di->tenantItem?->catalogItem))
+            ->merge($this->tenantItems->map(fn ($ti) => $ti->catalogItem))
+            ->push($this->tenantItem?->catalogItem)
+            ->filter()
+            ->unique('id')
+            ->values();
+    }
+
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
@@ -114,5 +131,28 @@ class Evidence extends Model
         }
 
         return round($bytes / 1024, 1).' KB';
+    }
+
+    /**
+     * Nome de exibição para listagens compactas: preserva o começo do nome,
+     * acrescenta reticências e mantém a extensão original, ex.:
+     * "relatorio-tecnico-ade....pdf". Nomes curtos retornam intactos.
+     */
+    public function displayName(int $maxLength = 40): string
+    {
+        if (empty($this->original_name)) {
+            return '';
+        }
+
+        if (mb_strlen($this->original_name) <= $maxLength) {
+            return $this->original_name;
+        }
+
+        $extension = pathinfo($this->original_name, PATHINFO_EXTENSION);
+        $suffix = $extension !== '' ? ".{$extension}" : '';
+        $maxStem = max(1, $maxLength - mb_strlen('...') - mb_strlen($suffix));
+        $stem = mb_substr($this->original_name, 0, $maxStem);
+
+        return rtrim($stem, ' .').'...'.$suffix;
     }
 }

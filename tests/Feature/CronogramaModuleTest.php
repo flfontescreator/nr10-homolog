@@ -90,7 +90,7 @@ class CronogramaModuleTest extends TestCase
         $this->assertSame([$setor], $this->item->fresh()->setores);
     }
 
-    public function test_empty_setores_clears_override_and_falls_back_to_catalog(): void
+    public function test_empty_setores_override_is_kept_empty(): void
     {
         $setor = CronogramaOptions::setores()[0];
 
@@ -104,8 +104,24 @@ class CronogramaModuleTest extends TestCase
 
         $fresh = $this->item->fresh();
 
-        $this->assertNull($fresh->setores);
-        $this->assertSame($fresh->catalogItem->setores_list, $fresh->setores_list);
+        $this->assertSame([], $fresh->setores);
+        $this->assertSame([], $fresh->setores_list);
+    }
+
+    public function test_removing_all_badges_persists_zeroed_setores(): void
+    {
+        $setor = CronogramaOptions::setores()[0];
+
+        $this->item->update(['setores' => [$setor]]);
+
+        $this->actingAsManager()
+            ->put(route('cronograma.update', $this->item), [])
+            ->assertSessionHas('success');
+
+        $fresh = $this->item->fresh();
+
+        $this->assertSame([], $fresh->setores);
+        $this->assertSame([], $fresh->setores_list);
     }
 
     public function test_catalog_splits_grouped_setores_into_individual_values(): void
@@ -120,9 +136,22 @@ class CronogramaModuleTest extends TestCase
         ], $catalog->setores_list);
     }
 
-    public function test_bootstrap_copies_catalog_setores_to_tenant_item(): void
+    public function test_bootstrap_leaves_setores_untouched_defaulting_to_catalog(): void
     {
-        $this->assertSame($this->item->catalogItem->setores, $this->item->fresh()->setores);
+        $fresh = $this->item->fresh();
+
+        $this->assertNull($fresh->setores);
+        $this->assertSame($fresh->catalogItem->setores_list, $fresh->setores_list);
+    }
+
+    public function test_untouched_item_follows_catalog_setores_live(): void
+    {
+        $this->item->catalogItem->update(['setores' => ['SESMT']]);
+
+        $fresh = $this->item->fresh();
+
+        $this->assertNull($fresh->setores);
+        $this->assertSame(['SESMT'], $fresh->setores_list);
     }
 
     public function test_setores_options_cover_planilha_values(): void

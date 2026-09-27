@@ -125,9 +125,12 @@ class ChecklistModuleTest extends TestCase
         ], $catalog->setores_list);
     }
 
-    public function test_bootstrap_copies_catalog_setores_to_tenant_item(): void
+    public function test_bootstrap_leaves_setores_untouched_defaulting_to_catalog(): void
     {
-        $this->assertSame($this->item->catalogItem->setores, $this->item->fresh()->setores);
+        $fresh = $this->item->fresh();
+
+        $this->assertNull($fresh->setores);
+        $this->assertSame($fresh->catalogItem->setores_list, $fresh->setores_list);
     }
 
     public function test_multiple_setores_are_saved(): void
@@ -144,7 +147,7 @@ class ChecklistModuleTest extends TestCase
         $this->assertSame([$setores[0], $setores[1]], $this->item->fresh()->setores);
     }
 
-    public function test_empty_setores_clears_override_and_falls_back_to_catalog(): void
+    public function test_empty_setores_override_is_kept_empty(): void
     {
         $setor = ChecklistOptions::setores()[0];
 
@@ -159,8 +162,25 @@ class ChecklistModuleTest extends TestCase
 
         $fresh = $this->item->fresh();
 
-        $this->assertNull($fresh->setores);
-        $this->assertSame($fresh->catalogItem->setores_list, $fresh->setores_list);
+        $this->assertSame([], $fresh->setores);
+        $this->assertSame([], $fresh->setores_list);
+    }
+
+    public function test_removing_all_badges_persists_zeroed_setores(): void
+    {
+        $setor = ChecklistOptions::setores()[0];
+
+        $this->item->update(['setores' => [$setor]]);
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->put(route('checklist.update', $this->item), [])
+            ->assertSessionHas('success');
+
+        $fresh = $this->item->fresh();
+
+        $this->assertSame([], $fresh->setores);
+        $this->assertSame([], $fresh->setores_list);
     }
 
     public function test_invalid_setor_is_rejected(): void

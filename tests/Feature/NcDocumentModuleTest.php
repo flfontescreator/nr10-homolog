@@ -320,6 +320,76 @@ class NcDocumentModuleTest extends TestCase
             ->assertSee(route('cronograma.index'), false);
     }
 
+    public function test_edit_form_from_document_carries_context_and_saves_to_document_item(): void
+    {
+        $branch = CatalogItem::tree(Source::Cronograma)->first();
+        $childId = $branch->children->first()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$childId]]);
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $entry = $document->items()->firstOrFail();
+
+        $item = TenantItem::withoutGlobalScopes()->findOrFail($entry->tenant_item_id);
+
+        // O form de edição aberto dentro do documento precisa manter o contexto
+        // (from=document&document_id) na action, para o save ir para o NcDocumentItem.
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('cronograma.show', [$item, 'from' => 'document', 'document_id' => $document->id]))
+            ->assertOk()
+            ->assertSee(route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]));
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->put(route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]), [
+                'criticidade' => 'ALTA',
+                'condicao_inicial' => 'Não Adequada',
+                'status' => 'Concluído',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertSame('ALTA', $entry->fresh()->criticidade);
+        $this->assertSame('Não Adequada', $entry->fresh()->condicao_inicial);
+        $this->assertSame('Concluído', $entry->fresh()->status->value);
+        $this->assertNull($item->fresh()->status);
+        $this->assertNull($item->fresh()->criticidade);
+    }
+
+    public function test_document_item_zeroed_setores_do_not_fall_back_to_catalog(): void
+    {
+        $branch = CatalogItem::tree(Source::Cronograma)->first();
+        $childId = $branch->children->first()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$childId]]);
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $entry = $document->items()->firstOrFail();
+
+        $item = TenantItem::withoutGlobalScopes()->findOrFail($entry->tenant_item_id);
+
+        // Item novo do documento herda o catálogo como padrão exibido (setores não tocados).
+        $this->assertNull($entry->setores);
+        $this->assertSame($entry->catalogItem->setores_list, $entry->setores_list);
+
+        // Remover todos os badges (requisição sem setores) persiste vazio: não volta ao catálogo.
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->put(route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]), [
+                'status' => 'Em andamento',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertSame([], $entry->fresh()->setores);
+        $this->assertSame([], $entry->fresh()->setores_list);
+    }
+
     public function test_finalized_document_blocks_its_own_item_but_plan_stays_free(): void
     {
         $branch = CatalogItem::tree(Source::Cronograma)->first();
@@ -891,7 +961,8 @@ class NcDocumentModuleTest extends TestCase
             ->get(route('documentos.index'))
             ->assertOk()
             ->assertSee('DN-01')
-            ->assertSee('DN-02');
+            ->assertSee('DN-02')
+            ->assertSee($item->catalogItem->code);
     }
 
     public function test_library_file_can_be_linked_to_plan_subitem(): void
@@ -931,6 +1002,14 @@ class NcDocumentModuleTest extends TestCase
             ->get(route('cronograma.show', $itemB))
             ->assertOk()
             ->assertSee('origem.png');
+
+        // Gestão de Documentos: badges na coluna Item com AMBOS os itens vinculados.
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('documentos.index'))
+            ->assertOk()
+            ->assertSee($itemA->catalogItem->code)
+            ->assertSee($itemB->catalogItem->code);
     }
 
     public function test_removing_last_link_deletes_file_but_shared_link_keeps_it(): void

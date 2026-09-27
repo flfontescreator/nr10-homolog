@@ -95,6 +95,8 @@ class CronogramaController extends Controller
 
         $backUrl = route('cronograma.index');
 
+        $updateRoute = route('cronograma.update', $item);
+
         $uploadRoute = route('cronograma.evidencia.upload', $item);
 
         $libraryAttachRoute = route('cronograma.biblioteca.attach', $item);
@@ -103,6 +105,7 @@ class CronogramaController extends Controller
 
         if ($document) {
             $backUrl = route('nc-documents.show', $document);
+            $updateRoute = route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]);
             $uploadRoute = route('cronograma.evidencia.upload', [$item, 'from' => 'document', 'document_id' => $document->id]);
             $libraryAttachRoute = route('cronograma.biblioteca.attach', [$item, 'from' => 'document', 'document_id' => $document->id]);
             $destroyRouteParams = ['from' => 'document', 'document_id' => $document->id];
@@ -127,6 +130,7 @@ class CronogramaController extends Controller
             'canDeleteEvidence' => $request->user()->canDeleteEvidence() && ! $locked,
             'lockedByDocument' => $locked,
             'backUrl' => $backUrl,
+            'updateRoute' => $updateRoute,
             'uploadRoute' => $uploadRoute,
             'libraryAttachRoute' => $libraryAttachRoute,
             'libraryAvailable' => $libraryAvailable,
@@ -167,14 +171,20 @@ class CronogramaController extends Controller
             'status' => ['nullable', 'string', Rule::in(array_keys(Status::options()))],
         ]);
 
-        if ($request->filled('setores')) {
+        // Setores em três estados: presente → como enviado ([] = zerado de propósito);
+        // ausente + setor legado → [setor]; ausente + picker exibia setores (usuário removeu
+        // todos os badges) → [] persistido; senão não mexe (mantém null = segue o catálogo).
+        if ($request->has('setores')) {
             $setores = array_values(array_unique(array_filter(array_map(
                 fn ($setor) => trim((string) $setor),
-                (array) $request->input('setores'),
+                (array) $request->input('setores', []),
             ))));
-            $data['setores'] = $setores ?: null;
+
+            $data['setores'] = $setores;
         } elseif ($request->filled('setor')) {
             $data['setores'] = [trim((string) $request->input('setor'))];
+        } elseif ($working->setores_list !== []) {
+            $data['setores'] = [];
         }
 
         if ($working instanceof NcDocumentItem) {

@@ -93,26 +93,22 @@ class TenantItem extends Model
     }
 
     /**
-     * Setores efetivos do subitem: os definidos pelo cliente ou, na ausência,
-     * o setor fixo herdado do catálogo.
+     * Setores efetivos do subitem, em três estados:
+     *  - `[...]` personalizados pelo cliente (usar como está);
+     *  - `[]` zerado de propósito (mostrar vazio, NÃO voltar ao catálogo);
+     *  - `null` não tocado → padrão de exibição: o setor fixo do catálogo.
      */
     public function getSetoresListAttribute(): array
     {
-        if (! empty($this->setores)) {
+        if (! is_null($this->setores)) {
             return $this->setores;
-        }
-
-        $catalogSetores = $this->catalogItem?->setores_list ?: [];
-
-        if (! empty($catalogSetores)) {
-            return $catalogSetores;
         }
 
         if (! empty($this->setor)) {
             return [$this->setor];
         }
 
-        return [];
+        return $this->catalogItem?->setores_list ?: [];
     }
 
     /**

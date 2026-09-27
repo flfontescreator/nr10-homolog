@@ -44,7 +44,7 @@
                                     <td>@include('partials.criticidade', ['criticidade' => $row?->criticidade_atual ?: $child->criticidade])</td>
                                     <td>
                                         <div class="setores-mini">
-                                            @forelse($row?->setores_list ?: $child->setores_list as $setor)
+                                            @forelse($row?->setores_list ?? $child->setores_list as $setor)
                                                 <span class="badge badge-setor">{{ $setor }}</span>
                                             @empty
                                                 <span class="muted">—</span>

@@ -86,13 +86,18 @@ class ChecklistController extends Controller
             'status' => ['nullable', 'string', 'in:'.implode(',', array_keys(Status::options()))],
         ]);
 
-        if ($request->filled('setores')) {
+        // Presente → como enviado ([] = zerado de propósito); ausente + picker
+        // exibia setores (usuário removeu todos) → [] persistido; senão não mexe
+        // (mantém null = segue o catálogo).
+        if ($request->has('setores')) {
             $setores = array_values(array_unique(array_filter(array_map(
                 fn ($setor) => trim((string) $setor),
-                (array) $request->input('setores'),
+                (array) $request->input('setores', []),
             ))));
 
-            $data['setores'] = $setores ?: null;
+            $data['setores'] = $setores;
+        } elseif ($item->setores_list !== []) {
+            $data['setores'] = [];
         }
 
         $item->fill($data);
