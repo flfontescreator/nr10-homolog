@@ -20,8 +20,10 @@
             $crumb = 'Prontuário NR-10';
         } elseif (str_starts_with($routeName, 'funcionarios')) {
             $crumb = 'Funcionários';
-        } elseif (str_starts_with($routeName, 'checklist')) {
+        } elseif (str_starts_with($routeName, 'checklist') || str_starts_with($routeName, 'nc-documents')) {
             $crumb = 'Não Conformidades';
+        } elseif (str_starts_with($routeName, 'auditoria')) {
+            $crumb = 'Auditoria';
         } elseif (str_starts_with($routeName, 'documentos')) {
             $crumb = 'Gestão de Documentos';
         } elseif (str_starts_with($routeName, 'tenants')) {
@@ -66,6 +68,7 @@
                 'label' => 'Configurações',
                 'items' => [
                     ['label' => 'Usuários', 'icon' => 'user', 'route' => 'usuarios.index', 'match' => 'usuarios*', 'visible' => $currentUser->isAdmin()],
+                    ['label' => 'Auditoria', 'icon' => 'eye', 'route' => 'auditoria.index', 'match' => 'auditoria*', 'visible' => $currentUser->isAdmin()],
                 ],
             ],
         ];

@@ -3,80 +3,97 @@
 @section('title', 'Não Conformidades')
 
 @section('content')
+    @php
+        $finalized = $documents->where('is_finalized', true);
+        $totalItems = $documents->sum('items_count');
+    @endphp
+
     <div class="page-header">
         <div>
             <h1>Não Conformidades</h1>
-            <p class="subtitle">Itens de não conformidade das instalações elétricas, com campos de controle por cliente.</p>
+            <p class="subtitle">
+                Documentos de não conformidades personalizados por cliente, com histórico de versões (snapshots).
+            </p>
         </div>
+        @if($canWrite)
+            <a class="btn" href="{{ route('nc-documents.create') }}">+ Novo Documento</a>
+        @endif
     </div>
 
     <div class="card stat-row" style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:16px">
-        <span class="badge badge-red">Criticidade ALTA: {{ $critCounts['alta'] }}</span>
-        <span class="badge badge-amber">Criticidade MÉDIA: {{ $critCounts['media'] }}</span>
-        <span class="badge badge-neutral">Status Pendente: {{ $critCounts['pendente'] }}</span>
+        <span class="badge badge-blue">Documentos: {{ $documents->count() }}</span>
+        <span class="badge badge-green">Finalizados: {{ $finalized->count() }}</span>
+        <span class="badge badge-neutral">Itens: {{ $totalItems }}</span>
+        <span class="badge badge-amber">Pendentes: {{ $pendingTotal }}</span>
     </div>
 
-    @if($items->isEmpty())
-        <div class="card docs-empty">Catálogo ainda não importado.</div>
+    @if($documents->isEmpty())
+        <div class="card docs-empty">
+            Nenhum documento de não conformidade ainda.
+            @if($canWrite)
+                <a href="{{ route('nc-documents.create') }}">Criar o primeiro documento</a>.
+            @endif
+        </div>
     @else
         <div class="card">
             <div class="table-wrap">
                 <table class="grid">
                     <thead>
                         <tr>
-                            <th>#</th>
-                            <th>Item / Não conformidade</th>
-                            <th>Criticidade</th>
-                            <th>Setor</th>
-                            <th>Condição inicial</th>
-                            <th>Inspeção</th>
+                            <th>Documento</th>
+                            <th>Título</th>
+                            <th>Itens</th>
                             <th>Status</th>
-                            <th>Evidências</th>
+                            <th>Criado por</th>
+                            <th>Última atualização</th>
                             <th class="text-right">Ação</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach($items as $child)
-                            @php($row = $map->get($child->id))
+                        @foreach($documents as $document)
                             <tr>
-                                <td><strong>{{ $child->code }}</strong></td>
-                                <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $child->title }}">{{ $child->title }}</td>
-                                <td>@include('partials.criticidade', ['criticidade' => $child->criticidade])</td>
-                                <td>
-                                    <div class="setores-mini">
-                                        @forelse($row?->setores_list ?: $child->setores_list as $setor)
-                                            <span class="badge badge-setor">{{ $setor }}</span>
-                                        @empty
-                                            <span class="muted">—</span>
-                                        @endforelse
-                                    </div>
+                                <td><strong>{{ $document->code }}</strong></td>
+                                <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $document->title }}">
+                                    {{ $document->title }}
                                 </td>
-                                <td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $row?->condicao_inicial }}">{{ $row?->condicao_inicial ?: '—' }}</td>
-                                <td>{{ $row?->data_inspecao?->format('d/m/Y') ?: '—' }}</td>
+                                <td>{{ $document->items_count }}</td>
                                 <td>
-                                    @if($row?->status)
-                                        <span class="badge {{ match($row->status->value) {
-                                            'Concluído' => 'badge-green',
-                                            'Em andamento' => 'badge-amber',
-                                            'Auditoria' => 'badge-blue',
-                                            default => 'badge-neutral',
-                                        } }}">
-                                            {{ $row->status->label() }}
-                                        </span>
+                                    @if($document->is_finalized)
+                                        <span class="badge badge-green">Finalizado</span>
                                     @else
-                                        <span class="muted">—</span>
+                                        <span class="badge badge-amber">Rascunho</span>
                                     @endif
                                 </td>
-                                <td>
-                                    <span class="badge {{ ($row->evidences_count ?? 0) > 0 ? 'badge-green' : 'badge-neutral' }}">
-                                        {{ $row->evidences_count ?? 0 }}
-                                    </span>
-                                </td>
+                                <td>{{ $document->creator?->name ?: '—' }}</td>
+                                <td>{{ $document->updated_at?->format('d/m/Y H:i') ?: '—' }}</td>
                                 <td class="text-right" style="white-space:nowrap">
-                                    @if($row)
-                                        <a class="btn btn-sm" href="{{ route('checklist.show', $row) }}">
-                                            {{ $canWrite ? 'Editar' : 'Ver' }}
-                                        </a>
+                                    <button class="btn btn-sm" form="doc-open-{{ $document->id }}">Abrir</button>
+                                    <form id="doc-open-{{ $document->id }}" method="GET" action="{{ route('nc-documents.show', $document) }}" class="inline">
+                                    </form>
+                                    @if($canWrite && ! $document->is_finalized)
+                                        <button class="btn btn-sm btn-secondary" form="doc-edit-{{ $document->id }}">Editar</button>
+                                        <form id="doc-edit-{{ $document->id }}" method="GET" action="{{ route('nc-documents.edit', $document) }}" class="inline">
+                                        </form>
+                                        <button class="btn btn-sm btn-secondary" form="doc-finalize-{{ $document->id }}"
+                                                onclick="return confirm('Finalizar o {{ $document->code }}? A edição será bloqueada.')">Finalizar</button>
+                                        <form id="doc-finalize-{{ $document->id }}" method="POST" action="{{ route('nc-documents.finalize', $document) }}" class="inline">
+                                            @csrf
+                                        </form>
+                                    @endif
+                                    @if($canWrite && $document->is_finalized)
+                                        <button class="btn btn-sm" form="doc-reopen-{{ $document->id }}"
+                                                onclick="return confirm('Reabrir o {{ $document->code }} para edição?')">Reabrir</button>
+                                        <form id="doc-reopen-{{ $document->id }}" method="POST" action="{{ route('nc-documents.reopen', $document) }}" class="inline">
+                                            @csrf
+                                        </form>
+                                    @endif
+                                    @if($canDelete)
+                                        <button class="btn btn-sm btn-danger" form="doc-delete-{{ $document->id }}"
+                                                onclick="return confirm('Excluir o {{ $document->code }}? O histórico e os vínculos serão removidos.')">Excluir</button>
+                                        <form id="doc-delete-{{ $document->id }}" method="POST" action="{{ route('nc-documents.destroy', $document) }}" class="inline">
+                                            @csrf
+                                            @method('DELETE')
+                                        </form>
                                     @endif
                                 </td>
                             </tr>

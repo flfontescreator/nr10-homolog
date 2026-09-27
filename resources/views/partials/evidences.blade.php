@@ -1,6 +1,10 @@
-@php($evidences = $item->evidences ?? collect())
+@php($evidences = $evidences ?? ($item->evidences ?? collect()))
 @php($canWrite = $canWrite ?? false)
 @php($canDeleteEvidence = $canDeleteEvidence ?? false)
+@php($destroyRouteModel = $destroyRouteModel ?? null)
+@php($destroyRouteParams = $destroyRouteParams ?? [])
+@php($libraryAvailable = $libraryAvailable ?? collect())
+@php($libraryAttachRoute = $libraryAttachRoute ?? null)
 
 <div class="card">
     <h2 class="card-title">Evidências</h2>
@@ -17,6 +21,48 @@
                 <div class="field-hint">Formatos de imagem e documentos. Executáveis (exe, php, bat, etc.) são bloqueados.</div>
             </div>
         </form>
+
+        @if($libraryAttachRoute && $libraryAvailable->isNotEmpty())
+            <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px">
+                <h2 class="card-title" style="font-size:14px">Anexar da biblioteca (reutilizar arquivo)</h2>
+                <p class="muted small">
+                    Vincula um arquivo já existente a este subitem, sem copiar. O mesmo arquivo
+                    pode aparecer em vários subitens e documentos.
+                </p>
+                <form method="POST" action="{{ $libraryAttachRoute }}">
+                    @csrf
+                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px">
+                        @foreach($libraryAvailable as $libraryEvidence)
+                            <label style="display:flex;gap:8px;align-items:center;padding:8px;border:1px solid #d9d9d9;border-radius:6px;background:#fff;cursor:pointer">
+                                <input type="checkbox" name="evidence_ids[]" value="{{ $libraryEvidence->id }}">
+                                @php($isImage = str_starts_with((string) $libraryEvidence->mime_type, 'image/'))
+                                @if($isImage)
+                                    <img src="{{ route('documentos.preview', $libraryEvidence) }}" alt=""
+                                         loading="lazy" style="width:44px;height:44px;object-fit:cover;border-radius:4px;flex:none">
+                                @else
+                                    <span style="width:44px;height:44px;display:flex;align-items:center;justify-content:center;background:#f4f6f8;border-radius:4px;flex:none">
+                                        @include('partials.icon', ['name' => 'file'])
+                                    </span>
+                                @endif
+                                <span style="flex:1;min-width:0">
+                                    <span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px">
+                                        {{ \Illuminate\Support\Str::limit($libraryEvidence->original_name, 30) }}
+                                    </span>
+                                    <span class="setores-mini">
+                                        @forelse($libraryEvidence->documents as $ref)
+                                            <span class="badge badge-blue">{{ $ref->code }}</span>
+                                        @empty
+                                            <span class="muted small">sem vínculo</span>
+                                        @endforelse
+                                    </span>
+                                </span>
+                            </label>
+                        @endforeach
+                    </div>
+                    <button class="btn btn-sm" type="submit" style="margin-top:10px">Vincular selecionados</button>
+                </form>
+            </div>
+        @endif
     @endif
 
     @if($evidences->isEmpty())
@@ -41,8 +87,11 @@
                     </div>
                 </div>
                 @if($canDeleteEvidence)
-                    <form method="POST" action="{{ route($destroyRoute, $evidence) }}"
-                          data-confirm="Excluir esta evidência? A ação não pode ser desfeita.">
+                    @php($destroyAction = $destroyRouteModel
+                        ? route($destroyRoute, array_merge([$destroyRouteModel, $evidence], $destroyRouteParams))
+                        : route($destroyRoute, array_merge([$evidence], $destroyRouteParams)))
+                    <form method="POST" action="{{ $destroyAction }}"
+                          data-confirm="Excluir o vínculo deste subitem? O arquivo continua na biblioteca se estiver vinculado em outro lugar.">
                         @csrf
                         @method('DELETE')
                         <button class="btn btn-sm btn-danger" type="submit">Excluir</button>

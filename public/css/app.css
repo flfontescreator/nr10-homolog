@@ -578,6 +578,8 @@ textarea {
 }
 
 /* ---------- Buttons ---------- */
+/* <button> usa line-height normal do navegador; links herdam 1.5 do body.
+   Normalizar na base mantém todos os .btn com a mesma altura do <button>. */
 .btn {
     display: inline-flex;
     align-items: center;
@@ -591,6 +593,7 @@ textarea {
     text-decoration: none;
     background: var(--accent);
     color: #fff;
+    line-height: normal;
 }
 
 .btn:hover {

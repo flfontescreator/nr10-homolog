@@ -40,14 +40,14 @@ class ChecklistModuleTest extends TestCase
             ->firstOrFail();
     }
 
-    public function test_checklist_index_lists_all_flat_items(): void
+    public function test_checklist_index_lists_documents(): void
     {
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('checklist.index'))
             ->assertOk()
             ->assertSee('Não Conformidades')
-            ->assertSee('badge-setor', false);
+            ->assertSee('Novo Documento');
     }
 
     public function test_every_catalog_item_has_a_tenant_row(): void

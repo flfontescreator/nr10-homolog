@@ -8,6 +8,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -16,9 +17,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        $middleware->web(append: [
-            SetTenantContext::class,
-        ]);
+        // O contexto do cliente precisa estar ativo ANTES do binding de rota,
+        // senão o escopo global de tenant não filtra os modelos e registros de
+        // outro cliente aparecem (o acesso cross-tenant vira 403 no controller
+        // em vez de 404 no binding). Por isso SubstitBindings é reposicionado
+        // para depois de SetTenantContext.
+        $middleware->web(
+            remove: [SubstituteBindings::class, SetTenantContext::class],
+            append: [SetTenantContext::class, SubstituteBindings::class],
+        );
 
         $middleware->alias([
             'tenant' => RequireTenant::class,

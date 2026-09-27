@@ -81,6 +81,18 @@ class TenantItem extends Model
     }
 
     /**
+     * Rótulo amigável usado na auditoria.
+     */
+    public function auditLabel(): string
+    {
+        $catalog = $this->catalogItem;
+
+        return $catalog
+            ? $catalog->code.' — '.$catalog->title
+            : 'Item #'.$this->id;
+    }
+
+    /**
      * Setores efetivos do subitem: os definidos pelo cliente ou, na ausência,
      * o setor fixo herdado do catálogo.
      */

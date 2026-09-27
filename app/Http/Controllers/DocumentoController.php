@@ -20,7 +20,7 @@ class DocumentoController extends Controller
         $source = $request->query('source');
 
         $query = Evidence::query()
-            ->with(['tenantItem.catalogItem', 'uploader'])
+            ->with(['tenantItem.catalogItem', 'uploader', 'documents'])
             ->when($source, fn ($q) => $q->whereHas(
                 'tenantItem.catalogItem',
                 fn ($c) => $c->where('source', $source)
@@ -70,6 +70,10 @@ class DocumentoController extends Controller
     public function destroy(Request $request, Evidence $evidence): RedirectResponse
     {
         if (! $request->user()->canDeleteEvidence() || $evidence->tenant_id !== TenantContext::id()) {
+            abort(403);
+        }
+
+        if ($evidence->linkedToFinalizedDocument()) {
             abort(403);
         }
 

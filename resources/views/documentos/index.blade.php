@@ -31,6 +31,7 @@
                             <th>Arquivo</th>
                             <th>Módulo</th>
                             <th>Item</th>
+                            <th>Documento de referência</th>
                             <th>Enviado por</th>
                             <th>Enviado em</th>
                             <th>Tamanho</th>
@@ -40,8 +41,9 @@
                     <tbody>
                         @foreach($documents as $doc)
                             <tr>
-                                <td>
-                                    <a href="{{ route('documentos.download', $doc) }}" title="{{ $doc->original_name }}">
+                                <td style="max-width:260px">
+                                    <a href="{{ route('documentos.download', $doc) }}" title="{{ $doc->original_name }}"
+                                       style="display:inline-block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom">
                                         {{ \Illuminate\Support\Str::limit($doc->original_name, 55) }}
                                     </a>
                                 </td>
@@ -56,6 +58,21 @@
                                     @endif
                                 </td>
                                 <td>{{ $doc->tenantItem->catalogItem->code ?? '—' }}</td>
+                                <td>
+                                    @if($doc->documents->isNotEmpty())
+                                        <div class="setores-mini">
+                                            @foreach($doc->documents as $ref)
+                                                <a class="badge badge-blue" style="text-decoration:none"
+                                                   href="{{ route('nc-documents.show', $ref) }}"
+                                                   title="Abrir {{ $ref->code }}">
+                                                    {{ $ref->code }}
+                                                </a>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <span class="muted">—</span>
+                                    @endif
+                                </td>
                                 <td>{{ $doc->uploader?->name ?? '—' }}</td>
                                 <td>{{ $doc->created_at->format('d/m/Y H:i') }}</td>
                                 <td>{{ $doc->humanSize() }}</td>

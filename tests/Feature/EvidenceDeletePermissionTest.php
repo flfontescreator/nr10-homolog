@@ -57,7 +57,7 @@ class EvidenceDeletePermissionTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['tenant_id' => $tenant->id, 'two_step_verified' => true])
-            ->delete(route('evidencia.destroy-cronograma', $evidence))
+            ->delete(route('cronograma.evidencia.destroy', [$evidence->tenant_item_id, $evidence]))
             ->assertSessionHas('success');
 
         $this->assertDatabaseMissing('evidences', ['id' => $evidence->id]);
@@ -73,7 +73,7 @@ class EvidenceDeletePermissionTest extends TestCase
 
         $this->actingAs($user)
             ->withSession(['tenant_id' => $tenantA->id, 'two_step_verified' => true])
-            ->delete(route('evidencia.destroy-cronograma', $evidence))
+            ->delete(route('cronograma.evidencia.destroy', [$evidence->tenant_item_id, $evidence]))
             ->assertNotFound();
 
         $this->assertDatabaseHas('evidences', ['id' => $evidence->id]);

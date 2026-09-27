@@ -3,9 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ItemStatus as Status;
-use App\Enums\Source;
-use App\Models\CatalogItem;
 use App\Models\Evidence;
+use App\Models\NcDocument;
+use App\Models\NcDocumentItem;
 use App\Models\TenantItem;
 use App\Support\ChecklistOptions;
 use App\Support\TenantContext;
@@ -19,38 +19,30 @@ use Illuminate\Validation\ValidationException;
 class ChecklistController extends Controller
 {
     /**
-     * Não Conformidades: itens são planos (sem seções hierárquicas),
-     * numerados de 1 a N conforme a planilha legada.
+     * Não Conformidades: lista os documentos do cliente. Cada documento
+     * contém a seleção personalizada de itens do Cronograma de Adequação.
      */
     public function index(): View
     {
         $tenantId = TenantContext::id();
-        $items = CatalogItem::query()
-            ->where('source', Source::Checklist->value)
-            ->where('is_section', false)
-            ->orderBy('n1')
-            ->orderBy('sort')
+
+        $documents = NcDocument::query()
+            ->with('creator')
+            ->withCount('items')
+            ->orderBy('number')
             ->get();
 
-        $map = TenantItem::query()
-            ->with('catalogItem')
-            ->withCount('evidences')
-            ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Checklist->value))
-            ->where('tenant_id', $tenantId)
-            ->get()
-            ->keyBy('catalog_item_id');
-
-        $critCounts = [
-            'alta' => $map->filter(fn (TenantItem $row) => $row->catalogItem->criticidade === 'ALTA')->count(),
-            'media' => $map->filter(fn (TenantItem $row) => $row->catalogItem->criticidade === 'MÉDIA')->count(),
-            'pendente' => $map->filter(fn (TenantItem $row) => $row->status === Status::Pendente)->count(),
-        ];
+        $pendingTotal = NcDocumentItem::query()
+            ->whereHas('document', fn ($q) => $q->where('tenant_id', $tenantId))
+            ->whereNotNull('tenant_item_id')
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'Concluído'))
+            ->count();
 
         return view('checklist.index', [
-            'items' => $items,
-            'map' => $map,
-            'critCounts' => $critCounts,
+            'documents' => $documents,
+            'pendingTotal' => $pendingTotal,
             'canWrite' => request()->user()->canWrite(),
+            'canDelete' => request()->user()->canDelete(),
         ]);
     }
 

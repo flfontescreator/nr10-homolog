@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Support\Audit;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,6 +51,8 @@ class LoginController extends Controller
         if (! Auth::attempt($credentials, $remember)) {
             RateLimiter::hit($key, 60);
 
+            Audit::record('auth.login_failed', 'Tentativa de login inválida para '.$request->email);
+
             throw ValidationException::withMessages([
                 'email' => 'Credenciais inválidas.',
             ]);
@@ -65,6 +68,8 @@ class LoginController extends Controller
         if (! $user->isSuperAdmin() && $user->tenant_id) {
             $request->session()->put('tenant_id', $user->tenant_id);
         }
+
+        Audit::record('auth.login', 'Login realizado por '.$user->name.'.', null, $user->tenant_id, user: $user);
 
         $request->session()->regenerate();
 
@@ -92,6 +97,8 @@ class LoginController extends Controller
     {
         /** @var User $user */
         $user = Auth::user();
+
+        Audit::record('auth.logout', 'Logout realizado por '.$user->name.'.', null, $user->tenant_id, user: $user);
 
         // Logout explícito revoga o dispositivo confiável.
         $user->revokeTrustedDevice($request->cookie('nr10_trusted_device'));

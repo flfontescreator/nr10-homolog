@@ -2,12 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Source;
-use App\Models\Evidence;
 use App\Models\Tenant;
 use App\Models\TenantItem;
+use App\Support\DashboardStats;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -25,34 +25,31 @@ class DashboardController extends Controller
 
         return view('dashboard', [
             'tenant' => $tenant,
-            'cronogramaTotal' => TenantItem::query()
-                ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Cronograma->value))
-                ->count(),
-            'prontuarioTotal' => TenantItem::query()
-                ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Prontuario->value))
-                ->count(),
-            'checklistTotal' => TenantItem::query()
-                ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Checklist->value))
-                ->count(),
-            'cronogramaComAcao' => TenantItem::query()
-                ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Cronograma->value))
-                ->whereNotNull('acao')
-                ->count(),
-            'checklistComAcao' => TenantItem::query()
-                ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Checklist->value))
-                ->whereNotNull('acao')
-                ->count(),
-            'prontuarioMedia' => TenantItem::query()
-                ->join('catalog_items', 'catalog_items.id', '=', 'tenant_items.catalog_item_id')
-                ->where('catalog_items.source', Source::Prontuario->value)
-                ->whereNotNull('tenant_items.percentual')
-                ->avg('tenant_items.percentual'),
-            'evidenciasCount' => Evidence::count(),
-            'recentEvidences' => Evidence::with(['tenantItem.catalogItem', 'uploader'])
-                ->latest()
-                ->limit(6)
-                ->get(),
+            'stats' => DashboardStats::for($tenant),
         ]);
+    }
+
+    /**
+     * Telemetria do dashboard: mesmo payload de index() em JSON, com os
+     * fragmentos de listagem já renderizados em HTML. Consultado pelo
+     * front a cada 60s para atualizar a página sem reload.
+     */
+    public function stats(Request $request): JsonResponse
+    {
+        $tenant = TenantContext::current();
+        abort_if(! $tenant, 404);
+
+        $data = DashboardStats::for($tenant);
+        $data['html'] = [
+            'alertas' => view('dashboard.partials._alerts', ['alertas' => $data['alertas']])->render(),
+            'setores' => view('dashboard.partials._agregado', ['rows' => $data['setores'], 'coluna' => 'Setor'])->render(),
+            'responsaveis' => view('dashboard.partials._agregado', ['rows' => $data['responsaveis'], 'coluna' => 'Responsável'])->render(),
+            'evidencias' => view('dashboard.partials._evidencias', ['evidences' => $data['recentEvidences']])->render(),
+        ];
+
+        unset($data['alertas'], $data['setores'], $data['responsaveis'], $data['recentEvidences']);
+
+        return response()->json($data);
     }
 
     protected function platformOverview(Collection $tenants): View

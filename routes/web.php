@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AjudaController;
+use App\Http\Controllers\AuditController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\CronogramaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoController;
 use App\Http\Controllers\FuncionarioController;
+use App\Http\Controllers\NcDocumentController;
 use App\Http\Controllers\ProntuarioController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\TwoStepController;
@@ -43,7 +45,10 @@ Route::middleware(['auth', '2fa'])->group(function () {
     Route::post('tenant/switch', [TenantController::class, 'switch'])->name('tenant.switch');
 
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::get('dashboard/stats', [DashboardController::class, 'stats'])->name('dashboard.stats');
     Route::get('ajuda', [AjudaController::class, 'index'])->name('ajuda');
+
+    Route::get('auditoria', [AuditController::class, 'index'])->name('auditoria.index');
 
     Route::get('/', function () {
         return redirect()->route('dashboard');
@@ -54,6 +59,8 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('cronograma/{item}', [CronogramaController::class, 'show'])->name('cronograma.show');
         Route::put('cronograma/{item}', [CronogramaController::class, 'update'])->name('cronograma.update');
         Route::post('cronograma/{item}/evidencias', [CronogramaController::class, 'uploadEvidence'])->name('cronograma.evidencia.upload');
+        Route::post('cronograma/{item}/biblioteca', [CronogramaController::class, 'attachLibraryEvidence'])->name('cronograma.biblioteca.attach');
+        Route::delete('cronograma/{item}/evidencias/{evidence}', [CronogramaController::class, 'destroyEvidenceLink'])->name('cronograma.evidencia.destroy');
 
         Route::get('prontuario', [ProntuarioController::class, 'index'])->name('prontuario.index');
         Route::get('prontuario/{item}', [ProntuarioController::class, 'show'])->name('prontuario.show');
@@ -73,14 +80,22 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::put('checklist/{item}', [ChecklistController::class, 'update'])->name('checklist.update');
         Route::post('checklist/{item}/evidencias', [ChecklistController::class, 'uploadEvidence'])->name('checklist.evidencia.upload');
 
+        Route::get('checklist/documentos/novo', [NcDocumentController::class, 'create'])->name('nc-documents.create');
+        Route::post('checklist/documentos', [NcDocumentController::class, 'store'])->name('nc-documents.store');
+        Route::get('checklist/documentos/{document}', [NcDocumentController::class, 'show'])->name('nc-documents.show');
+        Route::get('checklist/documentos/{document}/editar', [NcDocumentController::class, 'edit'])->name('nc-documents.edit');
+        Route::put('checklist/documentos/{document}', [NcDocumentController::class, 'update'])->name('nc-documents.update');
+        Route::post('checklist/documentos/{document}/finalizar', [NcDocumentController::class, 'finalize'])->name('nc-documents.finalize');
+        Route::post('checklist/documentos/{document}/reabrir', [NcDocumentController::class, 'reopen'])->name('nc-documents.reopen');
+        Route::delete('checklist/documentos/{document}', [NcDocumentController::class, 'destroy'])->name('nc-documents.destroy');
+        Route::delete('checklist/documentos/{document}/biblioteca/{evidence}', [NcDocumentController::class, 'detachLibraryEvidence'])->name('nc-documents.evidence.detach');
+
         Route::get('documentos', [DocumentoController::class, 'index'])->name('documentos.index');
         Route::get('documentos/{evidence}/download', [DocumentoController::class, 'download'])->name('documentos.download');
         Route::get('documentos/{evidence}/preview', [DocumentoController::class, 'preview'])->name('documentos.preview');
         Route::delete('documentos/{evidence}', [DocumentoController::class, 'destroy'])->name('documentos.destroy');
     });
 
-    Route::delete('evidencias/{evidence}', [CronogramaController::class, 'destroyEvidence'])
-        ->name('evidencia.destroy-cronograma');
     Route::delete('evidencias-prontuario/{evidence}', [ProntuarioController::class, 'destroyEvidence'])
         ->name('evidencia.destroy-prontuario');
     Route::delete('evidencias-checklist/{evidence}', [ChecklistController::class, 'destroyEvidence'])
