@@ -98,7 +98,7 @@
                                     @endif
                                 </td>
                                 <td>{{ $doc->uploader?->name ?? '—' }}</td>
-                                <td>{{ $doc->created_at->format('d/m/Y H:i') }}</td>
+                                <td>{{ $doc->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</td>
                                 <td>{{ $doc->humanSize() }}</td>
                                 <td class="text-right">
                                     <a class="btn btn-sm btn-secondary" href="{{ route('documentos.download', $doc) }}">Baixar</a>

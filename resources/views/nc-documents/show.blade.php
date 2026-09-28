@@ -54,7 +54,7 @@
         <span class="badge badge-blue">Itens: {{ $document->items_count ?? $document->items->count() }}</span>
         <span class="badge badge-amber">Não concluídos: {{ $pending }}</span>
         <span class="badge badge-neutral">Versões: {{ $document->versions->count() }}</span>
-        <span class="muted">Finalizado em: {{ $document->finalized_at?->format('d/m/Y H:i') ?: '—' }}</span>
+        <span class="muted">Finalizado em: {{ $document->finalized_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: '—' }}</span>
     </div>
 
     <div class="card">
@@ -150,7 +150,7 @@
                             {{ \Illuminate\Support\Str::limit($evidence->original_name, 60) }}
                         </a>
                         <div class="muted small">
-                            {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->format('d/m/Y H:i') }}
+                            {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
                         </div>
                         <div class="setores-mini">
                             @foreach($evidence->documents as $ref)
@@ -184,7 +184,7 @@
                     <summary style="cursor:pointer">
                         <strong>v{{ $version->version }}</strong>
                         — {{ $version->summary ?: 'Atualização' }}
-                        <span class="muted">· {{ $version->created_at?->format('d/m/Y H:i') }} · {{ $version->creator?->name ?: '—' }}</span>
+                        <span class="muted">· {{ $version->created_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }} · {{ $version->creator?->name ?: '—' }}</span>
                         <span class="badge badge-neutral">{{ count($version->selection) }} itens</span>
                     </summary>
                     <div class="table-wrap" style="margin-top:8px">

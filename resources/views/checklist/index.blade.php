@@ -65,7 +65,7 @@
                                     @endif
                                 </td>
                                 <td>{{ $document->creator?->name ?: '—' }}</td>
-                                <td>{{ $document->updated_at?->format('d/m/Y H:i') ?: '—' }}</td>
+                                <td>{{ $document->updated_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: '—' }}</td>
                                 <td class="text-right" style="white-space:nowrap">
                                     <button class="btn btn-sm" form="doc-open-{{ $document->id }}">Abrir</button>
                                     <form id="doc-open-{{ $document->id }}" method="GET" action="{{ route('nc-documents.show', $document) }}" class="inline">

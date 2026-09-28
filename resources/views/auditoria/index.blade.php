@@ -67,7 +67,7 @@
                 <tbody>
                     @forelse($logs as $log)
                         <tr>
-                            <td style="white-space:nowrap">{{ $log->created_at?->format('d/m/Y H:i:s') }}</td>
+                            <td style="white-space:nowrap">{{ $log->created_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i:s') }}</td>
                             <td>{{ $log->user?->name ?: '—' }}</td>
                             <td><span class="badge badge-neutral">{{ $log->action }}</span></td>
                             <td style="max-width:320px">{{ $log->summary }}</td>

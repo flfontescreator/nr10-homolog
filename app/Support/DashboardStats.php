@@ -72,7 +72,7 @@ class DashboardStats
         $previsao = $this->previsao($open, $conformidade, $evolucao, $today);
 
         return [
-            'generated_at' => $now->format('d/m/Y H:i:s'),
+            'generated_at' => $now->copy()->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i:s'),
             'kpi' => [
                 'total' => $total,
                 'total_delta' => $deltaTotal,

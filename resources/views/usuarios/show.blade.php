@@ -22,7 +22,7 @@
             <dt>E-mail</dt><dd>{{ $user->email }}</dd>
             <dt>Papel</dt><dd>{{ $user->role->label() }}</dd>
             <dt>Cliente</dt><dd>{{ $user->tenant?->name ?? 'Plataforma (super admin)' }}</dd>
-            <dt>Último acesso</dt><dd>{{ $user->last_login_at?->format('d/m/Y H:i') ?: 'Nunca' }}</dd>
+            <dt>Último acesso</dt><dd>{{ $user->last_login_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: 'Nunca' }}</dd>
             <dt>Verificação em 2 etapas</dt>
             <dd>
                 @if($user->twoStepEnabled())

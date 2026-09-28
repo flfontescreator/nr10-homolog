@@ -83,7 +83,7 @@
                         {{ \Illuminate\Support\Str::limit($evidence->original_name, 60) }}
                     </a>
                     <div class="muted small">
-                        {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->format('d/m/Y H:i') }}
+                        {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
                     </div>
                 </div>
                 @if($canDeleteEvidence)
