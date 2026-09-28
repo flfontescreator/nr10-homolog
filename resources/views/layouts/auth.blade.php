@@ -10,8 +10,7 @@
 <body class="auth-body">
     <div class="auth-card">
         <a class="auth-logo" href="{{ route('login') }}">
-            <span class="brand-logo">@include('partials.icon', ['name' => 'shield'])</span>
-            Gestão de Conformidades <em>NR-10</em>
+            <img src="{{ asset('img/logo-greenjob.png') }}" alt="GreenJob" style="height:56px;width:auto">
         </a>
 
         @if (session('success'))

@@ -97,16 +97,19 @@ try {
 
     $base = 'https://legacyit.com.br/clientes/greenjob/app/gestaonr10'
     # Paginas autenticadas respondem com redirect (302) para /login; um 500
-    # (ex.: ViteException ou view quebrada apos o deploy) aparece como ERRO.
+    # (ex.: ViteException ou view quebrada apos o deploy) sai como status 5xx.
     foreach ($p in @('/login', '/forgot-password', '/cronograma', '/checklist/documentos', '/documentos')) {
         try {
             $r = Invoke-WebRequest -Uri "$base$p" -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30 -ErrorAction Stop
             Write-Host "    $p -> $($r.StatusCode)"
         } catch {
-            if ($_.Exception.Response) {
-                Write-Host "    $p -> $([int]$_.Exception.Response.StatusCode) (redirect)"
+            $ex = $_.Exception
+            if ($ex.Response) {
+                Write-Host "    $p -> $([int]$ex.Response.StatusCode) ($($ex.Response.StatusCode))"
+            } elseif ($ex -is [System.InvalidOperationException]) {
+                Write-Host "    $p -> 302 (redirect)"
             } else {
-                Write-Host "    $p -> ERRO: $($_.Exception.Message)"
+                Write-Host "    $p -> ERRO: $($ex.Message)"
             }
         }
     }

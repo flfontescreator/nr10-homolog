@@ -81,8 +81,7 @@
             </button>
 
             <a class="brand" href="{{ route('dashboard') }}">
-                <span class="brand-logo">@include('partials.icon', ['name' => 'shield'])</span>
-                <span class="brand-name">Gestão de Conformidades <em>NR-10</em></span>
+                <img src="{{ asset('img/logo-greenjob.png') }}" alt="GreenJob" style="height:34px;width:auto">
             </a>
         </div>
 

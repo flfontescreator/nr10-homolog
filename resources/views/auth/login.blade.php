@@ -1,6 +1,6 @@
 @extends('layouts.auth')
 
-@section('title', 'Entrar — Gestão de Conformidades NR-10')
+@section('title', 'Entrar — Gestão de Conformidades')
 
 @section('content')
     <h1>Entrar no sistema</h1>
