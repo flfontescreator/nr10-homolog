@@ -84,14 +84,16 @@ try {
         if ($LASTEXITCODE -ne 0) { throw 'SCP da lista de delecoes falhou' }
     }
 
-    Write-Phase '5/6 Extraindo, backup do banco, migrations, cache e link...'
+    Write-Phase '5/6 Extraindo, backup do banco, migrations e cache...'
     # Backup via command deploy:db-backup antes do migrate; se falhar, o
-    # deploy aborta sem tocar no banco (fail-closed).
+    # deploy aborta sem tocar no banco (fail-closed). storage:link NAO roda
+    # aqui: o PHP do servidor tem exec() desabilitado (como proc_open) e o
+    # symlink de public/storage e criado manualmente via ln -s.
     $remote = "export PATH=/usr/bin:/bin:/usr/local/bin; cd $RemoteDir && tar -xzf $RemoteTgz"
     if ($deleted.Count -gt 0) {
         $remote += " && xargs -r rm -f < $RemoteDel"
     }
-    $remote += " && $PhpRemote artisan deploy:db-backup --dir=`$HOME/deploy-backups 2>&1 && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1 && $PhpRemote artisan storage:link 2>&1 && rm -f $RemoteTgz $RemoteDel"
+    $remote += " && $PhpRemote artisan deploy:db-backup --dir=`$HOME/deploy-backups 2>&1 && $PhpRemote artisan migrate --force 2>&1 && $PhpRemote artisan optimize:clear 2>&1 && rm -f $RemoteTgz $RemoteDel"
     & $Plink -hostkey $HostKey -ssh $HostAddr -P $Port -pw $Pass -batch $remote
     if ($LASTEXITCODE -ne 0) { throw 'Extracao/migracao falhou no servidor' }
 
