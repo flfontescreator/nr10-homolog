@@ -103,6 +103,17 @@ class NcDocumentItem extends Model
         return $this->criticidade ?: $this->catalogItem?->criticidade;
     }
 
+    /**
+     * Criticidade para os grids (documento de não conformidades): a trabalhada
+     * neste documento; na ausência, a fixada no plano (TenantItem); por último,
+     * a do catálogo. Espelha a regra do cronograma — o badge reflete o valor
+     * efetivo em vez do fixo do catálogo.
+     */
+    public function getCriticidadeEfetivaAttribute(): ?string
+    {
+        return $this->criticidade ?: ($this->tenantItem?->criticidade ?: $this->catalogItem?->criticidade);
+    }
+
     public function auditLabel(): string
     {
         $catalog = $this->catalogItem;

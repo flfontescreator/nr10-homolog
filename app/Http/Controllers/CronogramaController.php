@@ -56,6 +56,24 @@ class CronogramaController extends Controller
             $row->setAttribute('evidences_count', (int) $row->evidences_count + (int) ($pivotCounts[$row->id] ?? 0));
         });
 
+        // Criticidade efetiva do grid: a fixada no plano (TenantItem) ou, na
+        // ausência, a última criticidade trabalhada em documentos ABERTOS do
+        // cliente (espelha o que a dashboard mostra); sem nada disso, o badge
+        // cai para o valor fixo do catálogo (tratado na view).
+        $workedCriticidade = NcDocumentItem::query()
+            ->whereHas('document', fn ($q) => $q->where('tenant_id', $tenantId))
+            ->whereNotNull('tenant_item_id')
+            ->whereNotNull('criticidade')
+            ->orderByDesc('updated_at')
+            ->get(['tenant_item_id', 'criticidade', 'status'])
+            ->reject(fn (NcDocumentItem $i) => $i->status === Status::Concluido)
+            ->unique('tenant_item_id')
+            ->pluck('criticidade', 'tenant_item_id');
+
+        $map->each(function ($row) use ($workedCriticidade) {
+            $row->setAttribute('criticidade_efetiva', $row->criticidade ?: ($workedCriticidade[$row->id] ?? null));
+        });
+
         return view('cronograma.index', [
             'tree' => $tree,
             'map' => $map,

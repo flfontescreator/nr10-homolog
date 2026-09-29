@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * Documento de Não Conformidades: uma seleção de itens do Cronograma de Adequação
  * que passam a ser as não conformidades do cliente. Cada cliente pode ter
- * vários documentos (DN-01, DN-02, ...), cada um com histórico de versões.
+ * vários documentos (RNC-00001, RNC-00002, ...), cada um com histórico de versões.
  */
 class NcDocument extends Model
 {
@@ -45,7 +45,13 @@ class NcDocument extends Model
 
     public function items(): HasMany
     {
-        return $this->hasMany(NcDocumentItem::class, 'document_id')->orderBy('sort_order');
+        return $this->hasMany(NcDocumentItem::class, 'document_id')
+            ->orderBy(CatalogItem::select('source')->whereColumn('catalog_items.id', 'nc_document_items.catalog_item_id'))
+            ->orderBy(CatalogItem::select('n1')->whereColumn('catalog_items.id', 'nc_document_items.catalog_item_id'))
+            ->orderBy(CatalogItem::select('n2')->whereColumn('catalog_items.id', 'nc_document_items.catalog_item_id'))
+            ->orderBy(CatalogItem::select('n3')->whereColumn('catalog_items.id', 'nc_document_items.catalog_item_id'))
+            ->orderBy(CatalogItem::select('n4')->whereColumn('catalog_items.id', 'nc_document_items.catalog_item_id'))
+            ->orderBy('sort_order');
     }
 
     public function versions(): HasMany
@@ -88,7 +94,7 @@ class NcDocument extends Model
 
     public static function makeCode(int $number): string
     {
-        return 'DN-'.str_pad((string) $number, 2, '0', STR_PAD_LEFT);
+        return 'RNC-'.str_pad((string) $number, 5, '0', STR_PAD_LEFT);
     }
 
     public static function nextNumber(int $tenantId): int

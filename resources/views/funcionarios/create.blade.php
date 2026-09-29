@@ -8,7 +8,7 @@
             <h1>Novo funcionário</h1>
             <p class="subtitle">Ao salvar, o sistema cria automaticamente os sub-itens 4.1 a 4.8 do prontuário para este funcionário.</p>
         </div>
-        <a class="btn btn-secondary" href="{{ route('funcionarios.index') }}">← Voltar</a>
+        <a class="btn btn-secondary" href="{{ $backUrl ?? route('funcionarios.index') }}">← Voltar</a>
     </div>
 
     <div class="card" style="max-width:560px">

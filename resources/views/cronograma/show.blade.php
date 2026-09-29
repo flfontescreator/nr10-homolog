@@ -25,6 +25,14 @@
     </div>
 
     <div class="card">
+        <h2 class="card-title">Informações fixas do catálogo</h2>
+        <dl class="detail-grid">
+            <dt>Código</dt><dd>{{ $cat->code }}</dd>
+            <dt>Detalhamento técnico</dt><dd>{{ $cat->detalhamento ?: '—' }}</dd>
+        </dl>
+    </div>
+
+    <div class="card">
         <h2 class="card-title">
             Campos de controle
             @if($working->criticidade_atual)
@@ -149,16 +157,6 @@
                 <dt>Ação realizada</dt><dd>{{ $working->acao_realizada ?? '—' }}</dd>
             </dl>
         @endif
-    </div>
-
-    <div class="card">
-        <h2 class="card-title">Informações fixas do catálogo</h2>
-        <dl class="detail-grid">
-            <dt>Código</dt><dd>{{ $cat->code }}</dd>
-            <dt>Criticidade (catálogo)</dt><dd>{{ $cat->criticidade ?: '—' }}</dd>
-            <dt>Setor (catálogo)</dt><dd>{{ $cat->setor ?: '—' }}</dd>
-            <dt>Detalhamento técnico</dt><dd>{{ $cat->detalhamento ?: '—' }}</dd>
-        </dl>
     </div>
 
     @include('partials.evidences', [

@@ -41,7 +41,7 @@
                                 <tr>
                                     <td><strong>{{ $child->code }}</strong></td>
                                     <td style="max-width:340px">{{ \Illuminate\Support\Str::limit($child->title, 110) }}</td>
-                                    <td>@include('partials.criticidade', ['criticidade' => $row?->criticidade_atual ?: $child->criticidade])</td>
+                                    <td>@include('partials.criticidade', ['criticidade' => $row?->criticidade_efetiva ?: $child->criticidade])</td>
                                     <td>
                                         <div class="setores-mini">
                                             @forelse($row?->setores_list ?? $child->setores_list as $setor)

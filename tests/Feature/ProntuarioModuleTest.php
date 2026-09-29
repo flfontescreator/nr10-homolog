@@ -139,4 +139,44 @@ class ProntuarioModuleTest extends TestCase
             ->assertOk()
             ->assertSee('Não avaliado');
     }
+
+    public function test_prontuario_show_renders_criticidade_select(): void
+    {
+        $this->actingAsManager()
+            ->get(route('prontuario.show', $this->item))
+            ->assertOk()
+            ->assertSee('name="criticidade"', false)
+            ->assertSee('ALTA')
+            ->assertSee('MÉDIA')
+            ->assertSee('BAIXA');
+    }
+
+    public function test_valid_criticidade_is_saved_following_normativa_pattern(): void
+    {
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'criticidade' => 'ALTA',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertSame('ALTA', $this->item->fresh()->criticidade);
+    }
+
+    public function test_criticidade_atual_falls_back_to_catalog_criticidade(): void
+    {
+        $this->item->catalogItem->update(['criticidade' => 'MÉDIA']);
+
+        $this->assertSame('MÉDIA', $this->item->fresh()->criticidade_atual);
+    }
+
+    public function test_invalid_criticidade_is_rejected(): void
+    {
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'criticidade' => 'Crítica Absoluta',
+            ])
+            ->assertSessionHasErrors('criticidade');
+
+        $this->assertNull($this->item->fresh()->criticidade);
+    }
 }

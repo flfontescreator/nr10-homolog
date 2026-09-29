@@ -77,15 +77,24 @@
                                                     {{ $item->code }}
                                                 </span>
                                             @endforeach
+                                            @if($doc->tenantItem?->funcionario_id)
+                                                <span class="badge badge-neutral" title="Evidência do sub-item 4.x do funcionário">
+                                                    Func: {{ $doc->tenantItem->funcionario->nome }}
+                                                </span>
+                                            @endif
                                         </div>
                                     @else
                                         <span class="muted">—</span>
                                     @endif
                                 </td>
                                 <td>
-                                    @if($doc->documents->isNotEmpty())
+                                    @php($traceable = $doc->documents
+                                        ->merge($referencing->get($doc->tenant_item_id, collect()))
+                                        ->unique('id')
+                                        ->sortBy('code'))
+                                    @if($traceable->isNotEmpty())
                                         <div class="setores-mini">
-                                            @foreach($doc->documents as $ref)
+                                            @foreach($traceable as $ref)
                                                 <a class="badge badge-blue" style="text-decoration:none"
                                                    href="{{ route('nc-documents.show', $ref) }}"
                                                    title="Abrir {{ $ref->code }}">

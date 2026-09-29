@@ -52,7 +52,16 @@
                     <tbody>
                         @foreach($documents as $document)
                             <tr>
-                                <td><strong>{{ $document->code }}</strong></td>
+                                <td>
+                                <strong>{{ $document->code }}</strong>
+                                @php($sources = $documentSources->get($document->id, collect()))
+                                @if($sources->contains(\App\Enums\Source::Cronograma->value))
+                                    <span class="badge badge-blue">Normativa</span>
+                                @endif
+                                @if($sources->contains(\App\Enums\Source::Prontuario->value))
+                                    <span class="badge badge-green">Operacional</span>
+                                @endif
+                            </td>
                                 <td style="max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $document->title }}">
                                     {{ $document->title }}
                                 </td>

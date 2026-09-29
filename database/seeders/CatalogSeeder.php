@@ -20,6 +20,10 @@ class CatalogSeeder extends Seeder
      * Importa o conteúdo FIXO das planilhas (itens/subitens + termos técnicos + criticidade).
      * As colunas de controle (datas, status, percentuais, evidências...) não entram no catálogo.
      *
+     * A matriz 2026 (matriz_nr10_2026.csv) completa o cronograma: cria itens/seções que
+     * faltam, preenche norma/interpretação/sugestão/status e reclassifica criticidade e
+     * setor pela versão vigente da NR-10.
+     *
      * NÃO apaga a tabela antes de importar: os registros são atualizados pela chave
      * (source, code), preservando os IDs. Assim, os tenant_items que apontam para o
      * catálogo permanecem íntegros após reimportações. Apenas códigos que deixaram de
@@ -30,6 +34,7 @@ class CatalogSeeder extends Seeder
         $this->importProntuario();
         $this->importCronograma();
         $this->importChecklist();
+        $this->importMatrizCronograma();
 
         $this->removeStaleCodes();
 
@@ -133,6 +138,191 @@ class CatalogSeeder extends Seeder
 
             $this->upsertItem(Source::Checklist, $code, $group);
         }
+    }
+
+    /**
+     * Matriz NR-10 2026 (Portaria MTE nº 737/2026, vigência 01/06/2027).
+     *
+     * Colunas: 0 capítulo/seção, 1 item, 2 norma técnica, 3 interpretação técnica,
+     * 4 setor responsável sugerido, 5 criticidade, 6 sugestão de ação, 7 status.
+     *
+     * Regras do de-para:
+     * - Itens/seções ausentes são criados (IDs novos; os existentes nunca são recriados).
+     * - Norma técnica: a planilha prevalece (norma_tecnica literal + description do banco
+     *   converge quando o texto normalizado difere — corrige textos contaminados/abreviados).
+     * - Interpretação/sugestão/status: preenchem apenas o que está vazio (status inicial
+     *   "Não iniciado"; seções ficam sem status).
+     * - Criticidade e setor: a planilha 2026 prevalece (criticidade convertida para o
+     *   vocabulário do sistema; setor sugerido dividido em setores[]).
+     */
+    protected function importMatrizCronograma(): void
+    {
+        $path = storage_path('app/imports/matriz_nr10_2026.csv');
+
+        if (! is_file($path)) {
+            return;
+        }
+
+        $rows = $this->readCsv($path);
+        $sections = [];
+
+        // Linha 0: cabeçalho; dados a partir da linha 1.
+        foreach ($rows as $index => $row) {
+            if ($index === 0) {
+                continue;
+            }
+
+            $this->normalizeRow($row);
+            $secao = $this->clean((string) ($row[0] ?? ''));
+
+            if (preg_match('/^([\d]+(?:\.[\d]+)*)\s+(.+)$/u', $secao, $m)) {
+                $sections[$m[1]] = $this->clean($m[2]);
+            }
+
+            $code = $this->clean((string) ($row[1] ?? ''));
+
+            if (! $this->validCode($code)) {
+                continue;
+            }
+
+            $this->upsertMatrizItem($code, [
+                'norma' => trim((string) ($row[2] ?? '')),
+                'interpretacao' => $this->clean((string) ($row[3] ?? '')),
+                'setor' => $this->clean((string) ($row[4] ?? '')),
+                'criticidade' => $this->clean((string) ($row[5] ?? '')),
+                'sugestao' => $this->clean((string) ($row[6] ?? '')),
+                'status' => $this->clean((string) ($row[7] ?? '')),
+            ]);
+        }
+
+        // Seções que existem só na matriz (ex.: 10.1, 10.2) precisam de linha na
+        // árvore; as já existentes são preservadas.
+        foreach ($sections as $secCode => $secTitle) {
+            $exists = CatalogItem::query()
+                ->where('source', Source::Cronograma->value)
+                ->where('code', $secCode)
+                ->exists();
+
+            if (! $exists) {
+                $this->upsertItem(Source::Cronograma, $secCode, [
+                    'title' => $secTitle,
+                    'setores' => [],
+                ]);
+            } else {
+                // Seção já existe: registra o código para removeStaleCodes()
+                // não removê-la no reseed (cronograma.csv não a contém).
+                $this->sourceCodes[Source::Cronograma->value][] = $secCode;
+            }
+        }
+    }
+
+    /**
+     * Upsert de um item da matriz 2026 (ver regras em importMatrizCronograma()).
+     */
+    protected function upsertMatrizItem(string $code, array $matrix): void
+    {
+        $item = CatalogItem::firstOrNew([
+            'source' => Source::Cronograma->value,
+            'code' => $code,
+        ]);
+
+        $norma = $matrix['norma'];
+
+        // Norma: planilha prevalece — description converge só quando o texto
+        // normalizado difere (preserva o texto atual se apenas a formatação muda).
+        if (! $item->exists || $this->normText((string) $item->description) !== $this->normText($norma)) {
+            $item->description = $this->descFromNorma($norma);
+            $item->title = mb_substr($item->description, 0, 250);
+        }
+
+        $item->norma_tecnica = $norma;
+
+        // Preenche apenas o que está vazio (preserva edições posteriores).
+        if (empty($item->interpretacao_tecnica)) {
+            $item->interpretacao_tecnica = $matrix['interpretacao'] ?: null;
+        }
+
+        if (empty($item->sugestao_acao)) {
+            $item->sugestao_acao = $matrix['sugestao'] ?: null;
+        }
+
+        if (empty($item->status)) {
+            $item->status = $matrix['status'] ?: 'Não iniciado';
+        }
+
+        // Criticidade e setor: planilha 2026 prevalece.
+        $item->criticidade = $this->mapCriticidade($matrix['criticidade']);
+
+        $setores = $this->splitSetores($matrix['setor']);
+        $item->setores = $setores ?: null;
+        $item->setor = $setores[0] ?? null;
+
+        $parts = array_slice(array_merge(explode('.', $code), [0, 0, 0, 0]), 0, 4);
+        $item->n1 = (int) $parts[0];
+        $item->n2 = (int) $parts[1];
+        $item->n3 = (int) $parts[2];
+        $item->n4 = (int) $parts[3];
+
+        // sort não é tocado (linhas existentes mantêm o valor; novas usam o default 0,
+        // igual ao restante do cronograma — os testes ordenam por sort).
+
+        $this->sourceCodes[Source::Cronograma->value][] = $code;
+
+        $item->save();
+    }
+
+    /**
+     * Converte a criticidade da matriz para o vocabulário do sistema
+     * (CronogramaOptions::criticidades): Crítica → GIR, Alta → ALTA, etc.
+     */
+    protected function mapCriticidade(string $value): ?string
+    {
+        if ($value === '') {
+            return null;
+        }
+
+        return match (mb_strtolower($value)) {
+            'crítica', 'critica' => 'Crítica / Grave e Iminente Risco (GIR)',
+            'alta' => 'ALTA',
+            'média', 'media' => 'MÉDIA',
+            'baixa' => 'BAIXA',
+            default => $value,
+        };
+    }
+
+    /**
+     * "SESMT / Engenharia Elétrica / SGI" → ['SESMT', 'Engenharia Elétrica', 'SGI'].
+     */
+    protected function splitSetores(string $setor): array
+    {
+        if ($setor === '') {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            fn (string $part) => $this->clean($part),
+            explode('/', $setor),
+        ))));
+    }
+
+    /**
+     * Texto da norma sem o código inicial e com espaços normalizados (estilo do description).
+     */
+    protected function descFromNorma(string $norma): string
+    {
+        $text = trim($norma);
+        $text = preg_replace('/^[\d]+(?:\.[\d]+)*\s*/u', '', $text) ?? $text;
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * Normalização para comparar textos da norma (código inicial, caixa e espaços).
+     */
+    protected function normText(string $value): string
+    {
+        return trim($this->descFromNorma(mb_strtolower($value)), " \t\n\r\0\x0B.,;:()");
     }
 
     protected function upsertItem(Source $source, string $code, array $extra): void

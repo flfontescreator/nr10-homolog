@@ -81,6 +81,9 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('funcionarios/{funcionario}/editar', [FuncionarioController::class, 'edit'])->name('funcionarios.edit');
         Route::put('funcionarios/{funcionario}', [FuncionarioController::class, 'update'])->name('funcionarios.update');
         Route::delete('funcionarios/{funcionario}', [FuncionarioController::class, 'destroy'])->name('funcionarios.destroy');
+        Route::post('funcionarios/{funcionario}/subitens', [FuncionarioController::class, 'storeSubItem'])->name('funcionarios.subitems.store');
+        Route::put('funcionarios/{funcionario}/subitens/{item}', [FuncionarioController::class, 'updateSubItem'])->name('funcionarios.subitems.update');
+        Route::delete('funcionarios/{funcionario}/subitens/{item}', [FuncionarioController::class, 'destroySubItem'])->name('funcionarios.subitems.destroy');
 
         Route::get('checklist', [ChecklistController::class, 'index'])->name('checklist.index');
         Route::get('checklist/{item}', [ChecklistController::class, 'show'])->name('checklist.show');

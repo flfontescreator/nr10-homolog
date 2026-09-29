@@ -131,6 +131,173 @@ class ProntuarioCatalogModuleTest extends TestCase
             ->count());
     }
 
+    public function test_deleting_subitem_renumbers_remaining_subitems(): void
+    {
+        $second = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 2)
+            ->firstOrFail();
+        $last = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 11)
+            ->firstOrFail();
+
+        $first = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 1)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $first))
+            ->assertSessionHas('success');
+        $this->assertNull($first->fresh());
+
+        // A lacuna foi fechada: 1.2 virou 1.1 e 1.11 virou 1.10.
+        $second->refresh();
+        $last->refresh();
+
+        $this->assertSame('1.1', $second->code);
+        $this->assertSame(1, $second->n2);
+        $this->assertSame('1.10', $last->code);
+        $this->assertSame(10, $last->n2);
+    }
+
+    public function test_deleting_middle_subitem_renumbers_the_tail(): void
+    {
+        $before = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 2)
+            ->firstOrFail();
+        $third = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 3)
+            ->firstOrFail();
+        $last = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 11)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $third))
+            ->assertSessionHas('success');
+
+        // 1.4 virou 1.3 e 1.11 virou 1.10; os anteriores (1.1, 1.2) intocados.
+        $thirdRenumbered = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 3)
+            ->firstOrFail();
+
+        $this->assertSame('1.3', $thirdRenumbered->code);
+        $this->assertSame('1.10', $last->fresh()->code);
+        $this->assertSame('1.2', $before->fresh()->code);
+    }
+
+    public function test_subitem_created_after_deletion_goes_to_the_end(): void
+    {
+        $section = $this->prontuarioSection(1);
+
+        $first = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->where('n2', 1)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $first))
+            ->assertSessionHas('success');
+
+        $lastN2 = (int) CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('n1', 1)
+            ->where('is_section', false)
+            ->max('n2');
+
+        $this->actingAsUser($this->manager)
+            ->post(route('prontuario.catalogo.item.store'), [
+                'section_id' => $section->id,
+                'title' => 'Vai para o final',
+            ])
+            ->assertRedirect(route('prontuario.catalogo.index'));
+
+        $item = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('code', '1.'.($lastN2 + 1))
+            ->where('is_section', false)
+            ->firstOrFail();
+
+        $this->assertSame('Vai para o final', $item->title);
+        $this->assertSame($lastN2 + 1, $item->n2);
+    }
+
+    public function test_deleting_section_renumbers_following_sections_and_children(): void
+    {
+        $this->actingAsUser($this->manager)
+            ->post(route('prontuario.catalogo.section.store'), ['title' => 'Seção a excluir']);
+
+        $toDelete = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', true)
+            ->where('title', 'Seção a excluir')
+            ->firstOrFail();
+
+        $this->actingAsUser($this->manager)
+            ->post(route('prontuario.catalogo.section.store'), ['title' => 'Seção final']);
+
+        $following = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', true)
+            ->where('title', 'Seção final')
+            ->firstOrFail();
+
+        $this->actingAsUser($this->manager)
+            ->post(route('prontuario.catalogo.item.store'), [
+                'section_id' => $following->id,
+                'title' => 'Subitem da seção final',
+            ]);
+
+        $child = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('title', 'Subitem da seção final')
+            ->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $toDelete))
+            ->assertSessionHas('success');
+        $this->assertNull($toDelete->fresh());
+
+        // A seção seguinte assume o número liberado junto com o subitem dela.
+        $following->refresh();
+        $child->refresh();
+
+        $this->assertSame($toDelete->n1, $following->n1);
+        $this->assertSame((string) $toDelete->n1, $following->code);
+        $this->assertSame($toDelete->n1, $child->n1);
+        $this->assertSame($toDelete->n1.'.1', $child->code);
+
+        // Nenhuma seção ficou duplicada após a renumeração.
+        $this->assertSame(1, CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', true)
+            ->where('n1', $toDelete->n1)
+            ->count());
+    }
+
     public function test_subitem_rejects_cronograma_section(): void
     {
         $cronogramaSection = CatalogItem::query()

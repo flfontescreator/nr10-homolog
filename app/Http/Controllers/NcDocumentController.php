@@ -7,6 +7,7 @@ use App\Models\CatalogItem;
 use App\Models\Evidence;
 use App\Models\EvidenceDocument;
 use App\Models\EvidenceDocumentItem;
+use App\Models\Funcionario;
 use App\Models\NcDocument;
 use App\Models\NcDocumentItem;
 use App\Models\TenantItem;
@@ -18,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class NcDocumentController extends Controller
 {
@@ -39,6 +41,19 @@ class NcDocumentController extends Controller
     }
 
     /**
+     * Funcionários com os respectivos sub-itens do item 4 (o picker do documento
+     * apresenta cada sub-item individual, com evidência própria por funcionário).
+     */
+    protected function employeeItems()
+    {
+        return Funcionario::query()
+            ->where('tenant_id', TenantContext::id())
+            ->with('prontuarioItems')
+            ->orderBy('nome')
+            ->get();
+    }
+
+    /**
      * Biblioteca: todos os arquivos (evidências) do cliente ativo com os
      * documentos aos quais já estão vinculados (badges do picker).
      */
@@ -57,6 +72,7 @@ class NcDocumentController extends Controller
         return view('nc-documents.create', [
             'items' => $this->availableItems(),
             'operacional' => $this->availableOperacionalItems(),
+            'funcionarios' => $this->employeeItems(),
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => [],
         ]);
@@ -85,7 +101,7 @@ class NcDocumentController extends Controller
                 'updated_by' => $user->id,
             ]);
 
-            $this->syncItems($document, $data['catalog_item_ids'], $tenantId);
+            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId);
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
 
             $document->recordVersion('Criação do documento', $user->id);
@@ -93,13 +109,15 @@ class NcDocumentController extends Controller
             return $document;
         });
 
+        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['tenant_item_ids'] ?? []);
+
         Audit::record(
             'nc_document.created',
-            sprintf('Documento %s criado com %d itens.', $document->code, count($data['catalog_item_ids'])),
+            sprintf('Documento %s criado com %d itens.', $document->code, $itemCount),
             $document,
             $tenantId,
             [],
-            ['catalog_item_ids' => $data['catalog_item_ids']],
+            ['catalog_item_ids' => $data['catalog_item_ids'] ?? [], 'tenant_item_ids' => $data['tenant_item_ids'] ?? []],
             $request->user(),
         );
 
@@ -111,7 +129,7 @@ class NcDocumentController extends Controller
     {
         $this->assertSameTenant($document);
 
-        $document->load(['items.catalogItem', 'versions.creator', 'creator']);
+        $document->load(['items.catalogItem', 'items.tenantItem.funcionario', 'versions.creator', 'creator']);
 
         $pending = $document->items
             ->filter(fn (NcDocumentItem $entry) => $entry->tenant_item_id && $entry->status?->value !== 'Concluído')
@@ -151,13 +169,26 @@ class NcDocumentController extends Controller
             return back()->with('warning', 'O documento '.$document->code.' já foi finalizado. Reabra a edição para alterar.');
         }
 
-        $selected = $document->items()->pluck('catalog_item_id')->all();
+        $document->loadMissing('items.tenantItem');
+
+        $selected = [];
+        $selectedTenantItemIds = [];
+
+        foreach ($document->items as $entry) {
+            if ($entry->tenant_item_id && $entry->tenantItem?->funcionario_id) {
+                $selectedTenantItemIds[] = $entry->tenant_item_id;
+            } else {
+                $selected[] = $entry->catalog_item_id;
+            }
+        }
 
         return view('nc-documents.edit', [
             'document' => $document,
             'items' => $this->availableItems(),
             'operacional' => $this->availableOperacionalItems(),
+            'funcionarios' => $this->employeeItems(),
             'selected' => $selected,
+            'selectedTenantItemIds' => $selectedTenantItemIds,
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => $document->libraryFiles()->pluck('evidences.id')->all(),
         ]);
@@ -175,7 +206,7 @@ class NcDocumentController extends Controller
         $data = $this->validateSelection($request);
 
         $tenantId = TenantContext::id();
-        $before = $document->items()->pluck('catalog_item_id')->all();
+        $before = $document->items()->get(['catalog_item_id', 'tenant_item_id']);
 
         DB::transaction(function () use ($tenantId, $document, $data, $request) {
             $document->fill([
@@ -184,18 +215,23 @@ class NcDocumentController extends Controller
                 'updated_by' => $request->user()->id,
             ])->save();
 
-            $this->syncItems($document, $data['catalog_item_ids'], $tenantId);
+            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId);
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
             $document->recordVersion('Atualização do documento', $request->user()->id);
         });
 
+        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['tenant_item_ids'] ?? []);
+
         Audit::record(
             'nc_document.updated',
-            sprintf('Documento %s atualizado com %d itens.', $document->code, count($data['catalog_item_ids'])),
+            sprintf('Documento %s atualizado com %d itens.', $document->code, $itemCount),
             $document->fresh(),
             $tenantId,
-            ['catalog_item_ids' => $before],
-            ['catalog_item_ids' => $data['catalog_item_ids']],
+            [
+                'catalog_item_ids' => $before->pluck('catalog_item_id')->all(),
+                'tenant_item_ids' => $before->pluck('tenant_item_id')->filter()->all(),
+            ],
+            ['catalog_item_ids' => $data['catalog_item_ids'] ?? [], 'tenant_item_ids' => $data['tenant_item_ids'] ?? []],
             $request->user(),
         );
 
@@ -340,15 +376,17 @@ class NcDocumentController extends Controller
 
     /**
      * Valida a seleção de itens (seções e sub-itens dos catálogos NORMATIVO —
-     * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10) e os arquivos
-     * da biblioteca opcionais a vincular ao documento.
+     * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10), os sub-itens
+     * INDIVIDUAIS por funcionário (item 4) e os arquivos da biblioteca opcionais.
      */
     protected function validateSelection(Request $request): array
     {
-        return $request->validate([
+        $tenantId = TenantContext::id();
+
+        $data = $request->validate([
             'title' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'catalog_item_ids' => ['required', 'array', 'min:1'],
+            'catalog_item_ids' => ['sometimes', 'array'],
             'catalog_item_ids.*' => [
                 'required',
                 'integer',
@@ -357,66 +395,91 @@ class NcDocumentController extends Controller
                     Source::Prontuario->value,
                 ]),
             ],
+            'tenant_item_ids' => ['sometimes', 'array'],
+            'tenant_item_ids.*' => [
+                'required',
+                'integer',
+                function ($attribute, $value, $fail) use ($tenantId) {
+                    $valid = TenantItem::query()
+                        ->where('id', $value)
+                        ->where('tenant_id', $tenantId)
+                        ->whereNotNull('funcionario_id')
+                        ->whereHas('catalogItem', fn ($q) => $q
+                            ->where('source', Source::Prontuario->value)
+                            ->where('n1', 4)
+                            ->where('is_section', false))
+                        ->exists();
+
+                    if (! $valid) {
+                        $fail('Foi enviado um sub-item de funcionário inválido (item 4 do prontuário).');
+                    }
+                },
+            ],
             'evidence_ids' => ['nullable', 'array'],
             'evidence_ids.*' => [
                 'integer',
-                Rule::exists('evidences', 'id')->where('tenant_id', TenantContext::id()),
+                Rule::exists('evidences', 'id')->where('tenant_id', $tenantId),
             ],
         ]);
+
+        if (empty($data['catalog_item_ids'] ?? []) && empty($data['tenant_item_ids'] ?? [])) {
+            throw ValidationException::withMessages([
+                'catalog_item_ids' => 'Selecione ao menos um item (normativo/operacional) ou sub-item de funcionário.',
+            ]);
+        }
+
+        return $data;
     }
 
     /**
-     * Reescreve a seleção do documento via UPSERT: os itens que continuam na
-     * seleção PRESERVAM o estado de trabalho por documento (ids estáveis);
-     * itens novos são inicializados a partir do estado atual do TenantItem do
-     * cronograma. As seções (títulos) entram sem TenantItem: são a "capa" do
-     * documento no PDF.
+     * Reescreve a seleção do documento via UPSERT por assinatura:
+     *  - sub-item de funcionário (item 4): assinatura pelo tenant_item_id exato;
+     *  - seção (capa, sem linha de trabalho): assinatura pelo catalog_item_id;
+     *  - sub-item genérico: assinatura pela linha de trabalho do catálogo
+     *    (firstOrCreate por tenant + catalog_item).
+     * Itens que ficam na seleção PRESERVAM o estado POR DOCUMENTO (ids estáveis);
+     * itens novos são inicializados a partir do estado atual do TenantItem.
      */
-    protected function syncItems(NcDocument $document, array $catalogItemIds, int $tenantId): void
+    protected function syncItems(NcDocument $document, array $catalogItemIds, array $tenantItemIds, int $tenantId): void
     {
-        $existingBefore = $document->items()->pluck('catalog_item_id')->all();
+        $existing = $document->items()->get();
 
-        $existing = $document->items()->get()->keyBy('catalog_item_id');
+        $selection = $this->resolveSelection($catalogItemIds, $tenantItemIds, $tenantId);
 
-        $selectedIds = array_values(array_unique(array_map('intval', $catalogItemIds)));
+        $selectedBySignature = collect($selection)
+            ->keyBy(fn ($row) => $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id));
 
-        $removed = $existing->filter(fn (NcDocumentItem $entry) => ! in_array($entry->catalog_item_id, $selectedIds, true));
+        $removed = $existing->filter(
+            fn (NcDocumentItem $entry) => ! $selectedBySignature->has($this->entrySignature($entry->catalog_item_id, $entry->tenant_item_id)),
+        );
 
         foreach ($removed as $entry) {
             $this->removeItemLinks($entry);
-
             $entry->delete();
         }
 
-        $catalogs = CatalogItem::query()->whereIn('id', $selectedIds)->get()->keyBy('id');
+        $keyed = $existing->keyBy(
+            fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id, $entry->tenant_item_id),
+        );
 
         $sort = 0;
 
-        foreach ($selectedIds as $catalogItemId) {
-            $catalog = $catalogs->get($catalogItemId);
-            $entry = $existing->get($catalogItemId);
+        foreach ($selection as $row) {
+            $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id);
+            $entry = $keyed->get($signature);
 
             $fields = [];
-            $tenantItemId = null;
 
-            if ($catalog && ! $catalog->is_section) {
-                $tenantItem = TenantItem::firstOrCreate(
-                    ['tenant_id' => $tenantId, 'catalog_item_id' => $catalogItemId],
-                );
-
-                $tenantItemId = $tenantItem->id;
-
-                if (! $entry) {
-                    $fields = $this->importTenantState($tenantItem);
-                }
+            if (! $entry && $row['tenant_item']) {
+                $fields = $this->importTenantState($row['tenant_item']);
             }
 
             if ($entry) {
                 $entry->update(['sort_order' => $sort]);
             } else {
                 $document->items()->create(array_merge([
-                    'catalog_item_id' => $catalogItemId,
-                    'tenant_item_id' => $tenantItemId,
+                    'catalog_item_id' => $row['catalog_item_id'],
+                    'tenant_item_id' => $row['tenant_item']?->id,
                     'sort_order' => $sort,
                 ], $fields));
             }
@@ -424,12 +487,95 @@ class NcDocumentController extends Controller
             $sort++;
         }
 
-        $removedIds = array_values(array_diff($existingBefore, $selectedIds));
+        $removedIds = $removed->pluck('catalog_item_id')->all();
 
         if (! empty($removedIds)) {
             // TenantItems de trabalho não são apagados: ficam para registros históricos.
             Audit::record('nc_document.items_removed', sprintf('%d item(ns) removidos do documento %s.', count($removedIds), $document->code), $document, $tenantId, $removedIds, []);
         }
+    }
+
+    /**
+     * Resolve a seleção enviada em pares estáveis (catalog_item, tenant_item):
+     * itens de catálogo (seções e sub-itens genéricos, com preferência ao item 4
+     * de funcionário) seguidos dos sub-itens individuais de funcionário.
+     */
+    protected function resolveSelection(array $catalogItemIds, array $tenantItemIds, int $tenantId): array
+    {
+        $rows = [];
+
+        $catalogIds = array_values(array_unique(array_map('intval', $catalogItemIds)));
+        $catalogs = CatalogItem::query()->whereIn('id', $catalogIds)->get()->keyBy('id');
+
+        foreach ($catalogIds as $catalogItemId) {
+            $catalog = $catalogs->get($catalogItemId);
+
+            if (! $catalog) {
+                continue;
+            }
+
+            $tenantItem = null;
+
+            if (! $catalog->is_section) {
+                $query = TenantItem::query()
+                    ->where('tenant_id', $tenantId)
+                    ->where('catalog_item_id', $catalogItemId);
+
+                // Item 4 do prontuário é por funcionário: quando há sub-itens
+                // de funcionários, o documento trabalha sobre o registro daquele
+                // funcionário (senão cai no registro genérico / cria novo).
+                $isProntuario4 = $catalog->source === Source::Prontuario && (int) $catalog->n1 === 4;
+
+                $tenantItem = $isProntuario4
+                    ? $query->whereNotNull('funcionario_id')->orderBy('funcionario_id')->first()
+                    : $query->first();
+
+                $tenantItem ??= TenantItem::firstOrCreate(
+                    ['tenant_id' => $tenantId, 'catalog_item_id' => $catalogItemId],
+                );
+            }
+
+            $rows[] = [
+                'catalog_item_id' => (int) $catalogItemId,
+                'tenant_item' => $tenantItem,
+            ];
+        }
+
+        $selectedTenantIds = array_values(array_unique(array_map('intval', $tenantItemIds)));
+        $tenantItems = TenantItem::query()
+            ->whereIn('id', $selectedTenantIds)
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('funcionario_id')
+            ->get()
+            ->keyBy('id');
+
+        foreach ($selectedTenantIds as $tenantItemId) {
+            $tenantItem = $tenantItems->get($tenantItemId);
+
+            if (! $tenantItem) {
+                continue;
+            }
+
+            $rows[] = [
+                'catalog_item_id' => (int) $tenantItem->catalog_item_id,
+                'tenant_item' => $tenantItem,
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Assinatura estável de um item no documento: pela linha de trabalho
+     * (tenant_item) quando houver; senão pelo item de catálogo (seções/capa).
+     */
+    protected function entrySignature(int $catalogItemId, ?int $tenantItemId): string
+    {
+        if ($tenantItemId) {
+            return 't:'.$tenantItemId;
+        }
+
+        return 'c:'.$catalogItemId;
     }
 
     /**

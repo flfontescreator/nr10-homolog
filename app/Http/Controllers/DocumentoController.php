@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\Source;
 use App\Models\Evidence;
+use App\Models\NcDocumentItem;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -22,6 +23,7 @@ class DocumentoController extends Controller
         $query = Evidence::query()
             ->with([
                 'tenantItem.catalogItem',
+                'tenantItem.funcionario',
                 'uploader',
                 'documents',
                 'documentItems.tenantItem.catalogItem',
@@ -33,8 +35,21 @@ class DocumentoController extends Controller
             ))
             ->latest();
 
+        $documents = $query->paginate(25);
+
+        // Rastreabilidade: RNCs que contêm o sub-item (ex.: 4.x de funcionário) ao
+        // qual o arquivo está ancorado — a referência por sub-item, além do badge
+        // direto de biblioteca (evidence_document).
+        $referencing = NcDocumentItem::query()
+            ->whereIn('tenant_item_id', $documents->getCollection()->pluck('tenant_item_id')->filter())
+            ->with('document')
+            ->get()
+            ->groupBy('tenant_item_id')
+            ->map(fn ($entries) => $entries->pluck('document'));
+
         return view('documentos.index', [
-            'documents' => $query->paginate(25),
+            'documents' => $documents,
+            'referencing' => $referencing,
             'activeSource' => $source,
             'sources' => Source::cases(),
         ]);

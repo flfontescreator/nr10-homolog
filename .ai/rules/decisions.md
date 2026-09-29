@@ -163,3 +163,31 @@ implementação, adicionar a seção desta fase como regra para as próximas.
   npm/build — regra de frontend); layout com classes existentes + `style=` inline; os cards
   originais ficaram na seção "Indicadores do plano e da biblioteca" (secundários também
   atualizam no polling).
+
+## Fase 10 — Matriz NR-10 2026 completa o catálogo (de-para)
+Área: `Database\Seeders\CatalogSeeder` (`importMatrizCronograma`/`upsertMatrizItem`),
+migration `2026_09_29_194520`, `storage/app/imports/matriz_nr10_2026.csv`,
+`CronogramaOptions`, `tests/Feature/CatalogMatrizSyncTest`.
+
+- **Fonte**: `matriz_nr10_2026.csv` (133 itens × 12 colunas; Portaria MTE nº 737/2026,
+  vigência 01/06/2027). CSV não versionado no git (mesma regra dos demais imports).
+- **De-para por (source, code)**: cria o que falta (8 itens + seções 10.1/10.2 → 149 linhas
+  no cronograma); IDs preservados via `updateOrCreate`; reseed idempotente.
+  **Armadilha**: códigos que existem só na matriz precisam ser registrados em
+  `sourceCodes` mesmo quando a linha já existe — senão `removeStaleCodes` apaga no reseed.
+- **Regras de conteúdo**: norma técnica = planilha prevalece sempre (`norma_tecnica`
+  literal com o código; `description` converge só quando o texto normalizado difere —
+  corrigiu 7 itens, ex.: 10.7.4.1 estava contaminado com o texto do 10.7.4.2);
+  interpretação/sugestão/status preenchem apenas o vazio (status inicial "Não iniciado",
+  seções ficam sem); criticidade e setor = planilha 2026 prevalece (decisão do usuário),
+  com mapeamento Crítica→`Crítica / Grave e Iminente Risco (GIR)`, Alta→`ALTA`,
+  Média→`MÉDIA`, Baixa→`BAIXA`.
+- **`sort` não é tocado**: o cronograma inteiro vive com `sort=0` e os testes ordenam
+  por `sort` — alterar o contador do seeder mudaria a ordem das listagens de teste.
+- **`CronogramaOptions`**: `criticidades()` ganhou `BAIXA`; `setores()` faz a união de
+  cronograma.csv (col. Setor) com os setores da matriz (col. 4, divididos por `/`).
+- **Tenants existentes**: `Tenant::bootstrapItems()` precisa ser reexecutado por tenant
+  para vincular os itens novos (local já executado nos tenants 1 e 5; produção pendente
+  de autorização, junto com migrate + re-seed + scp do CSV).
+- Cobertura: `CatalogMatrizSyncTest` (7 casos: criação de itens/seções, preenchimento,
+  convergência de textos, reclassificação, preservação de edições, idempotência).

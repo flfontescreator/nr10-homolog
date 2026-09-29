@@ -26,7 +26,8 @@ class CronogramaOptions
 
     /**
      * Valores permitidos para "Criticidade" de um subitem (inclusive os
-     * valores extras introduzidos pelo cliente: "Não aplicada" e "Em partes").
+     * valores extras introduzidos pelo cliente: "Não aplicada" e "Em partes",
+     * e "BAIXA" — criticidade baixa da matriz NR-10 2026).
      */
     public static function criticidades(): array
     {
@@ -35,12 +36,15 @@ class CronogramaOptions
             'Em partes',
             'ALTA',
             'MÉDIA',
+            'BAIXA',
             'Crítica / Grave e Iminente Risco (GIR)',
         ];
     }
 
     /**
-     * Valores únicos (ordenados) da coluna Setor da planilha de cronograma.
+     * Valores únicos (ordenados) da coluna Setor da planilha de cronograma,
+     * somados aos setores sugeridos da matriz NR-10 2026 (coluna 4, itens
+     * separados por "/").
      */
     public static function setores(): array
     {
@@ -55,7 +59,22 @@ class CronogramaOptions
         $setores = collect($rows)
             ->slice(2) // pula título e cabeçalho
             ->map(fn ($row) => trim((string) ($row[3] ?? '')))
-            ->filter()
+            ->filter();
+
+        $matrizPath = storage_path('app/imports/matriz_nr10_2026.csv');
+
+        if (is_file($matrizPath)) {
+            $matriz = CatalogSeeder::csvRows($matrizPath);
+
+            $setores = $setores->merge(
+                collect($matriz)
+                    ->slice(1) // pula cabeçalho
+                    ->flatMap(fn ($row) => array_map('trim', explode('/', (string) ($row[4] ?? ''))))
+                    ->filter()
+            );
+        }
+
+        $setores = $setores
             ->unique()
             ->sort()
             ->values()

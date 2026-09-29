@@ -87,11 +87,14 @@
                             <td>
                                 <strong>{{ $entry->catalogItem->code }}</strong>
                                 @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem])
+                                @if($entry->tenantItem?->funcionario)
+                                    <span class="badge badge-neutral">Func: {{ $entry->tenantItem->funcionario->nome }}</span>
+                                @endif
                             </td>
                             <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $entry->catalogItem->title }}">
                                 {{ $entry->catalogItem->title }}
                             </td>
-                            <td>@include('partials.criticidade', ['criticidade' => $entry->catalogItem->criticidade])</td>
+                            <td>@include('partials.criticidade', ['criticidade' => $entry->criticidade_efetiva])</td>
                             <td>
                                 <div class="setores-mini">
                                     @forelse($entry->setores_list as $setor)

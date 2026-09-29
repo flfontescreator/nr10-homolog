@@ -37,11 +37,20 @@ class ProntuarioController extends Controller
             $averages[$branch->section->n1] = TenantItem::averagePercent($tenantId, Source::Prontuario->value, $branch->section->n1, $scope);
         }
 
+        // Item 4 no grid do prontuário: cada funcionário com seus sub-itens 4.x
+        // (evidências, status e percentual próprios — "1 funcionário → N subitens").
+        $funcionarios = Funcionario::query()
+            ->where('tenant_id', $tenantId)
+            ->with(['prontuarioItems' => fn ($q) => $q->orderBy('catalog_item_id')->withCount('evidences')])
+            ->orderBy('nome')
+            ->get();
+
         return view('prontuario.index', [
             'tree' => $tree,
             'map' => $map,
             'averages' => $averages,
             'funcionariosTotal' => Funcionario::query()->where('tenant_id', $tenantId)->count(),
+            'funcionarios' => $funcionarios,
             'canWrite' => request()->user()->canWrite(),
         ]);
     }
@@ -74,6 +83,7 @@ class ProntuarioController extends Controller
         $data = $request->validate([
             'evidencias_status' => ['nullable', 'string', 'max:30', 'in:Digital,Pendente,Nao Aplicado'],
             'condicao_inicial' => ['nullable', 'string', 'max:30', Rule::in(CronogramaOptions::condicoesIniciais())],
+            'criticidade' => ['nullable', 'string', Rule::in(CronogramaOptions::criticidades())],
             'data_realizacao' => ['nullable', 'date'],
             'data_validade' => ['nullable', 'date'],
             'percentual' => ['nullable', 'numeric', 'min:0', 'max:100'],

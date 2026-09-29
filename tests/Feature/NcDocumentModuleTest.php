@@ -93,6 +93,108 @@ class NcDocumentModuleTest extends TestCase
             ->assertSee('Operacional');
     }
 
+    public function test_document_grid_orders_items_by_catalog_numbering(): void
+    {
+        $sec4 = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', true)
+            ->where('code', '4')
+            ->firstOrFail();
+
+        $item43 = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('code', '4.3')
+            ->firstOrFail();
+
+        $sec8 = CatalogItem::create([
+            'source' => 'prontuario',
+            'code' => '8',
+            'n1' => 8,
+            'n2' => 0,
+            'n3' => 0,
+            'n4' => 0,
+            'is_section' => true,
+            'title' => 'Seção nova no final',
+            'description' => '',
+        ]);
+
+        $item81 = CatalogItem::create([
+            'source' => 'prontuario',
+            'parent_id' => $sec8->id,
+            'code' => '8.1',
+            'n1' => 8,
+            'n2' => 1,
+            'n3' => 0,
+            'n4' => 0,
+            'is_section' => false,
+            'title' => 'Sub-item novo',
+            'description' => '',
+        ]);
+
+        // Ordem enviada pelo formulário fora da sequência: 8, 4.3, 4, 8.1.
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), [
+                'catalog_item_ids' => [$sec8->id, $item43->id, $sec4->id, $item81->id],
+            ])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $html = $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertOk()
+            ->getContent();
+
+        $posSec4 = strpos($html, 'documentação comprobatória');
+        $posItem43 = strpos($html, '<strong>4.3</strong>');
+        $posSec8 = strpos($html, 'Seção nova no final');
+        $posItem81 = strpos($html, '<strong>8.1</strong>');
+
+        // Grid segue a sequência do catálogo, não a ordem do formulário:
+        // seção 4, 4.3, seção 8, 8.1 (a nova no final).
+        $this->assertNotFalse($posSec4);
+        $this->assertNotFalse($posItem43);
+        $this->assertNotFalse($posSec8);
+        $this->assertNotFalse($posItem81);
+        $this->assertLessThan($posItem43, $posSec4);
+        $this->assertLessThan($posSec8, $posItem43);
+        $this->assertLessThan($posItem81, $posSec8);
+    }
+
+    public function test_checklist_grid_shows_report_type_badges_per_document(): void
+    {
+        $normativaId = $this->catalogIds(1)[0];
+
+        $operacionalId = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail()->id;
+
+        // Um documento só normativo, um só operacional e um misto.
+        foreach ([[$normativaId], [$operacionalId], [$normativaId, $operacionalId]] as $selection) {
+            $this->actingAs($this->manager)
+                ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+                ->post(route('nc-documents.store'), ['catalog_item_ids' => $selection])
+                ->assertRedirect();
+        }
+
+        $html = $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('checklist.index'))
+            ->assertOk()
+            ->getContent();
+
+        // Normativa aparece no doc normativo e no misto; Operacional no doc
+        // operacional e no misto. Se o tipo de relatório fosse marcado errado,
+        // as contagens divergiriam.
+        $this->assertSame(2, substr_count($html, 'Normativa'));
+        $this->assertSame(2, substr_count($html, 'Operacional'));
+    }
+
     public function test_manager_can_create_document_with_selection(): void
     {
         $ids = $this->catalogIds(3);
@@ -104,7 +206,7 @@ class NcDocumentModuleTest extends TestCase
 
         $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
 
-        $this->assertSame('DN-01', $document->code);
+        $this->assertSame('RNC-00001', $document->code);
         $this->assertSame('draft', $document->status->value);
         $this->assertSame(3, $document->items()->count());
         $this->assertSame(1, $document->versions()->count());
@@ -185,6 +287,21 @@ class NcDocumentModuleTest extends TestCase
             ->assertSee('data-tab-panel="operacional"', false);
     }
 
+    public function test_create_page_has_sticky_action_bar_with_count_and_shortcut_hint(): void
+    {
+        $response = $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.create'))
+            ->assertOk();
+
+        $response->assertSee('data-form-actions', false)
+            ->assertSee('data-selected-count', false)
+            ->assertSee('item(ns) selecionado(s)')
+            ->assertSee('Atalhos:')
+            ->assertSee('requestSubmit', false)
+            ->assertSee('Criar documento');
+    }
+
     public function test_sections_can_be_selected_as_cover_items(): void
     {
         $tree = CatalogItem::tree(Source::Cronograma);
@@ -217,7 +334,7 @@ class NcDocumentModuleTest extends TestCase
     {
         $ids = $this->catalogIds(2);
 
-        foreach (['DN-01', 'DN-02'] as $expectedCode) {
+        foreach (['RNC-00001', 'RNC-00002'] as $expectedCode) {
             $this->actingAs($this->manager)
                 ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
                 ->post(route('nc-documents.store'), ['catalog_item_ids' => $ids])
@@ -230,7 +347,7 @@ class NcDocumentModuleTest extends TestCase
             ->pluck('code')
             ->all();
 
-        $this->assertSame(['DN-01', 'DN-02'], $codes);
+        $this->assertSame(['RNC-00001', 'RNC-00002'], $codes);
     }
 
     public function test_selection_requires_at_least_one_item(): void
@@ -679,7 +796,7 @@ class NcDocumentModuleTest extends TestCase
             ->first();
 
         $this->assertNotNull($audit);
-        $this->assertStringContainsString('DN-01', $audit->summary);
+        $this->assertStringContainsString('RNC-00001', $audit->summary);
         $this->assertSame($this->manager->id, $audit->user_id);
     }
 
@@ -724,7 +841,7 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('documentos.index'))
             ->assertOk()
-            ->assertSee('DN-01');
+            ->assertSee('RNC-00001');
     }
 
     public function test_upload_form_from_document_screen_carries_context_and_lists_evidence(): void
@@ -780,7 +897,7 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('documentos.index'))
             ->assertOk()
-            ->assertSee('DN-01');
+            ->assertSee('RNC-00001');
     }
 
     public function test_reuse_library_evidence_when_creating_document(): void
@@ -824,7 +941,7 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('documentos.index'))
             ->assertOk()
-            ->assertSee('DN-01');
+            ->assertSee('RNC-00001');
     }
 
     public function test_same_evidence_linked_to_two_documents_shows_both_badges(): void
@@ -862,8 +979,8 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('documentos.index'))
             ->assertOk()
-            ->assertSee('DN-01')
-            ->assertSee('DN-02');
+            ->assertSee('RNC-00001')
+            ->assertSee('RNC-00002');
     }
 
     public function test_removing_shared_evidence_from_document_keeps_file_for_other_documents(): void
@@ -1058,8 +1175,8 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('documentos.index'))
             ->assertOk()
-            ->assertSee('DN-01')
-            ->assertSee('DN-02')
+            ->assertSee('RNC-00001')
+            ->assertSee('RNC-00002')
             ->assertSee($item->catalogItem->code);
     }
 
@@ -1242,5 +1359,61 @@ class NcDocumentModuleTest extends TestCase
         $this->assertNotNull($audit);
         $this->assertStringContainsString('1 —', $audit->summary);
         $this->assertSame('2026-09-01 00:00:00', $audit->data_new['data_inspecao']);
+    }
+
+    public function test_document_grid_badge_reflects_criticidade_worked_in_the_document(): void
+    {
+        $item = TenantItem::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->id)
+            ->whereHas('catalogItem', fn ($q) => $q->where('source', 'cronograma')->where('is_section', false))
+            ->firstOrFail();
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$item->catalog_item_id]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        // Sem trabalho realizado, o grid ainda mostra o valor fixo do catálogo.
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertDontSee('crit-em-partes', false);
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->put(route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]), [
+                'criticidade' => 'Em partes',
+            ])
+            ->assertSessionHas('success');
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertSee('crit-em-partes', false);
+    }
+
+    public function test_document_grid_badge_falls_back_to_plan_criticidade(): void
+    {
+        $item = TenantItem::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->id)
+            ->whereHas('catalogItem', fn ($q) => $q->where('source', 'cronograma')->where('is_section', false))
+            ->firstOrFail();
+
+        // Criticidade fixada no plano; o documento não trabalha o item.
+        $item->update(['criticidade' => 'Em partes']);
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$item->catalog_item_id]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertSee('crit-em-partes', false);
     }
 }

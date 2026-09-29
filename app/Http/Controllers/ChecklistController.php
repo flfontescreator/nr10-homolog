@@ -38,9 +38,21 @@ class ChecklistController extends Controller
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'Concluído'))
             ->count();
 
+        // Fontes (Normativa/Operacional) presentes em cada documento, para os
+        // badges do grid distinguirem o tipo de relatório por linha.
+        $documentSources = NcDocumentItem::query()
+            ->whereIn('document_id', $documents->pluck('id'))
+            ->join('catalog_items', 'catalog_items.id', '=', 'nc_document_items.catalog_item_id')
+            ->select('nc_document_items.document_id', 'catalog_items.source')
+            ->distinct()
+            ->get()
+            ->groupBy('document_id')
+            ->map(fn ($rows) => $rows->pluck('source')->values());
+
         return view('checklist.index', [
             'documents' => $documents,
             'pendingTotal' => $pendingTotal,
+            'documentSources' => $documentSources,
             'canWrite' => request()->user()->canWrite(),
             'canDelete' => request()->user()->canDelete(),
         ]);

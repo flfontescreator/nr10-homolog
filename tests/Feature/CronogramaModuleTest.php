@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\NcDocument;
 use App\Models\Tenant;
 use App\Models\TenantItem;
 use App\Models\User;
@@ -62,6 +63,72 @@ class CronogramaModuleTest extends TestCase
             ->assertSee('Campos de controle')
             ->assertSee('badge-setor', false)
             ->assertSee('Criticidade');
+    }
+
+    public function test_cronograma_show_fixed_block_is_on_top_with_only_code_and_technical_detail(): void
+    {
+        $this->actingAsManager()
+            ->get(route('cronograma.show', $this->item))
+            ->assertOk()
+            ->assertSeeInOrder(['Informações fixas do catálogo', 'Campos de controle'])
+            ->assertSee($this->item->catalogItem->code)
+            ->assertSee($this->item->catalogItem->detalhamento)
+            ->assertDontSee('Criticidade (catálogo)')
+            ->assertDontSee('Setor (catálogo)');
+    }
+
+    public function test_grid_badge_reflects_criticidade_worked_in_open_document(): void
+    {
+        $this->actingAsManager()
+            ->get(route('cronograma.index'))
+            ->assertDontSee('crit-em-partes', false);
+
+        $this->actingAsManager()
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$this->item->catalog_item_id]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->actingAsManager()
+            ->put(route('cronograma.update', ['item' => $this->item, 'from' => 'document', 'document_id' => $document->id]), [
+                'criticidade' => 'Em partes',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertSame(
+            'Em partes',
+            $document->items()->where('tenant_item_id', $this->item->id)->firstOrFail()->criticidade,
+        );
+
+        $this->actingAsManager()
+            ->get(route('cronograma.index'))
+            ->assertSee('crit-em-partes', false);
+    }
+
+    public function test_grid_badge_keeps_plan_criticidade_over_document_worked(): void
+    {
+        $this->actingAsManager()
+            ->put(route('cronograma.update', $this->item), [
+                'criticidade' => 'MÉDIA',
+            ])
+            ->assertSessionHas('success');
+
+        $this->actingAsManager()
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$this->item->catalog_item_id]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->actingAsManager()
+            ->put(route('cronograma.update', ['item' => $this->item, 'from' => 'document', 'document_id' => $document->id]), [
+                'criticidade' => 'Em partes',
+            ])
+            ->assertSessionHas('success');
+
+        $this->actingAsManager()
+            ->get(route('cronograma.index'))
+            ->assertDontSee('crit-em-partes', false)
+            ->assertSee('crit-media', false);
     }
 
     public function test_multiple_setores_are_saved(): void
@@ -130,9 +197,8 @@ class CronogramaModuleTest extends TestCase
 
         $this->assertSame([
             'SESMT',
-            'Segurança do Trabalho',
-            'Engenharia',
-            'Manutenção Elétrica',
+            'Engenharia Elétrica',
+            'Produção',
         ], $catalog->setores_list);
     }
 
@@ -159,14 +225,18 @@ class CronogramaModuleTest extends TestCase
         $setores = CronogramaOptions::setores();
 
         $expected = [
-            'SESMT', 'Segurança do Trabalho', 'Engenharia', 'Manutenção Elétrica',
-            'Engenharia Elétrica', 'Operação', 'Manutenção', 'RH', 'Departamento Pessoal',
-            'Saúde Ocupacional', 'PCMSO', 'Suprimentos', 'Compras', 'Gestão', 'Contratos',
-            'Prestadores', 'Treinamento', 'Gestão Operacional', 'PLH – Profissional Legalmente Habilitado',
-            'Supervisor', 'Trabalhador Autorizado', 'Responsável Técnico', 'Responsável pela Autorização',
-            'Gestor da Atividade', 'Gestão de Pessoas', 'EPI', 'EPC', 'Metrologia', 'Qualidade',
-            'Profissional Autorizado', 'Comissionamento', 'Organização Contratante', 'Almoxarifado',
-            'Documentação',
+            'Almoxarifado', 'Automação', 'Brigada', 'Comissionamento', 'Compras', 'Contratos',
+            'DP', 'Departamento Pessoal', 'Diretoria', 'Documentação', 'Documentação Técnica',
+            'EPC', 'EPI', 'Engenharia', 'Engenharia Elétrica', 'Engenharia de Projetos',
+            'Facilities', 'Gestor da Atividade', 'Gestão', 'Gestão Operacional', 'Gestão de Pessoas',
+            'Gestão de Terceiros', 'Inspeção', 'Jurídico', 'Laboratório', 'Manutenção',
+            'Manutenção Elétrica', 'Metrologia', 'Operação', 'Organização Contratante', 'PCMSO',
+            'PLH', 'PLH – Profissional Legalmente Habilitado', 'Prestadores', 'Produção',
+            'Profissional Autorizado', 'Projetos', 'Proteção', 'Qualidade', 'RH',
+            'Responsável Técnico', 'Responsável pela Autorização', 'SESMT', 'SGI',
+            'Saúde Ocupacional', 'Segurança', 'Segurança de Processo', 'Segurança do Trabalho',
+            'Supervisor', 'Supervisão', 'Supervisão Operacional', 'Suprimentos', 'TI',
+            'Todos os níveis de supervisão', 'Trabalhador Autorizado', 'Treinamento',
         ];
 
         sort($expected);

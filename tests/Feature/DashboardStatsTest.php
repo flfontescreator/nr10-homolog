@@ -196,7 +196,7 @@ class DashboardStatsTest extends TestCase
         $otherDoc = NcDocument::create([
             'tenant_id' => $otherTenant->id,
             'number' => 1,
-            'code' => 'DN-01',
+            'code' => 'RNC-00001',
             'title' => 'Doc alheio',
             'status' => DocumentStatus::Draft,
             'created_by' => $this->manager->id,

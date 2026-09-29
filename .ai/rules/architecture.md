@@ -62,6 +62,8 @@ Catálogo FIXO vem de planilhas CSV (`storage/app/imports`) → `catalog_items`
 ## Dados fixos (catálogo)
 - `CatalogSeeder` importa prontuario.csv, cronograma.csv, checklist.csv
   (upsert por source+code preserva IDs; remove só códigos obsoletos).
+  `matriz_nr10_2026.csv` completa o cronograma (norma/interpretação/sugestão/status +
+  reclassifica criticidade/setor pela NR-10 2026 — Fase 10 em `decisions.md`).
 - Seção = nó com filhos nos níveis 1–2 (`markSections`); seções NÃO geram
   `tenant_items` no bootstrap. No CSV atual do cronograma as seções são todas nível 2.
 - CSVs não são versionados no git.
