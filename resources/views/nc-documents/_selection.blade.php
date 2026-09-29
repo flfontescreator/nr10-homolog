@@ -122,10 +122,13 @@
                         <div id="section-{{ $section->id }}" class="pick-children" style="display:grid;gap:6px;margin:6px 0 0 26px">
                             @if((int) $section->n1 === 4)
                                 {{-- Item 4 é por funcionário: cada sub-item individual com evidência própria. --}}
-                                <p class="muted" style="margin:8px 0">
-                                    O item 4 é por funcionário — marque os sub-itens individuais de cada funcionário que entram
-                                    neste documento. Cada sub-item carrega a evidência daquele funcionário.
-                                </p>
+                                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0">
+                                    <p class="muted" style="margin:0">
+                                        O item 4 é por funcionário — marque os sub-itens individuais de cada funcionário que entram
+                                        neste documento. Cada sub-item carrega a evidência daquele funcionário.
+                                    </p>
+                                    <a class="btn btn-sm" href="{{ route('funcionarios.create', $funcionarioBackParams) }}">+ Cadastrar funcionário</a>
+                                </div>
                                 @forelse($funcionarios as $funcionario)
                                     <div style="border:1px solid #e2e2e2;border-radius:6px;padding:8px;margin-bottom:8px;background:#fbfbfb">
                                         <strong>{{ $funcionario->nome }}</strong>
@@ -151,10 +154,7 @@
                                         </div>
                                     </div>
                                 @empty
-                                    <p class="muted">
-                                        Nenhum funcionário cadastrado.
-                                        <a href="{{ route('funcionarios.create', $funcionarioBackParams) }}">Cadastrar funcionário</a> para liberar os sub-itens do item 4.
-                                    </p>
+                                    <p class="muted">Nenhum funcionário cadastrado ainda — use o botão acima para cadastrar e liberar os sub-itens do item 4.</p>
                                 @endforelse
                             @else
                                 @foreach($branch->children as $child)

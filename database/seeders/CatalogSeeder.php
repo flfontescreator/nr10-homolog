@@ -376,32 +376,60 @@ class CatalogSeeder extends Seeder
     }
 
     /**
+     * Sincroniza APENAS o catálogo NORMATIVO (Cronograma de Adequação + Matriz
+     * NR-10 2026) a partir dos CSVs, sem tocar no catálogo operacional (Prontuário)
+     * nem no checklist. Usado em produção para propagar a normativa atualizada sem
+     * o risco de recriar itens operacionais que foram excluídos pelos clientes.
+     */
+    public function syncNormativa(): void
+    {
+        $this->importCronograma();
+        $this->importMatrizCronograma();
+
+        $codes = array_values(array_unique($this->sourceCodes[Source::Cronograma->value] ?? []));
+
+        if ($codes !== []) {
+            CatalogItem::query()
+                ->where('source', Source::Cronograma->value)
+                ->whereNotIn('code', $codes)
+                ->delete();
+        }
+
+        $this->markSectionsFor(Source::Cronograma);
+    }
+
+    /**
      * Seção = nó que contém filhos. Ex.: "10.3" (cronograma) e "1..7" (prontuário)
      * agrupam subitens; um nó intermediário como "10.4.3" também agrupa "10.4.3.1".
      */
     protected function markSections(): void
     {
-        $items = CatalogItem::all()->groupBy('source');
+        foreach (Source::cases() as $source) {
+            $this->markSectionsFor($source);
+        }
+    }
 
-        foreach ($items as $source => $group) {
-            $codes = $group->pluck('code', 'id');
+    protected function markSectionsFor(Source $source): void
+    {
+        $items = CatalogItem::query()->where('source', $source->value)->get();
 
-            $sections = $codes->filter(function (string $code) use ($codes) {
-                return $codes->contains(
-                    fn (string $other) => $other !== $code && str_starts_with($other, $code.'.')
-                );
-            });
+        $codes = $items->pluck('code', 'id');
 
-            $sections = $sections->mapWithKeys(fn ($c) => [$c => true]);
+        $sections = $codes->filter(function (string $code) use ($codes) {
+            return $codes->contains(
+                fn (string $other) => $other !== $code && str_starts_with($other, $code.'.')
+            );
+        });
 
-            foreach ($group as $item) {
-                $segments = substr_count($item->code, '.') + 1;
-                $isSection = ($sections[$item->code] ?? false) && in_array($segments, [1, 2], true);
+        $sections = $sections->mapWithKeys(fn ($c) => [$c => true]);
 
-                if ($item->is_section !== $isSection) {
-                    $item->is_section = $isSection;
-                    $item->save();
-                }
+        foreach ($items as $item) {
+            $segments = substr_count($item->code, '.') + 1;
+            $isSection = ($sections[$item->code] ?? false) && in_array($segments, [1, 2], true);
+
+            if ($item->is_section !== $isSection) {
+                $item->is_section = $isSection;
+                $item->save();
             }
         }
     }

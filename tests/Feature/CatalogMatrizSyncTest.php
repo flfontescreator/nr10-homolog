@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\Source;
 use App\Models\CatalogItem;
 use App\Models\Tenant;
+use App\Models\TenantItem;
 use App\Support\CronogramaOptions;
 use Database\Seeders\CatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -133,5 +134,65 @@ class CatalogMatrizSyncTest extends TestCase
 
         $this->assertSame(149, $after->count());
         $this->assertEquals($before, $after);
+    }
+
+    public function test_sync_normativa_command_updates_normativa_without_touching_operacional(): void
+    {
+        // Item criado pelo gerenciador do catálogo operacional (não existe na planilha).
+        $managed = CatalogItem::create([
+            'source' => Source::Prontuario->value,
+            'code' => '99.1',
+            'n1' => 99,
+            'n2' => 1,
+            'n3' => 0,
+            'n4' => 0,
+            'is_section' => false,
+            'title' => 'Item operacional gerido na UI',
+            'description' => '',
+        ]);
+
+        $managedTenantItems = TenantItem::query()->count();
+
+        $cronBefore = CatalogItem::query()
+            ->where('source', Source::Cronograma->value)
+            ->orderBy('id')
+            ->pluck('id', 'code');
+
+        $this->artisan('catalog:sync-normativa')->assertExitCode(0);
+
+        // Catálogo operacional intocado (nem recriado, nem removido).
+        $this->assertNotNull($managed->fresh());
+        $this->assertSame($managedTenantItems, TenantItem::query()->count());
+
+        // Normativa: atualizada e idempotente (mesmas linhas, conteúdo de matriz vigente).
+        $this->assertSame(149, CatalogItem::query()->where('source', Source::Cronograma->value)->count());
+        $this->assertEquals(
+            $cronBefore,
+            CatalogItem::query()->where('source', Source::Cronograma->value)->orderBy('id')->pluck('id', 'code')
+        );
+
+        $this->assertStringStartsWith('10.1.1 Esta Norma estabelece', $this->item('10.1.1')->norma_tecnica);
+        $this->assertSame('BAIXA', $this->item('10.8.4.1.1')->criticidade);
+        $this->assertSame(['SESMT', 'Engenharia Elétrica', 'Produção'], $this->item('10.3.1')->setores);
+    }
+
+    public function test_sync_normativa_command_fills_fields_on_a_seeded_database(): void
+    {
+        // Simula uma base sem a matriz: remove os campos da matriz e as seções criadas só por ela.
+        CatalogItem::query()
+            ->where('source', Source::Cronograma->value)
+            ->update(['norma_tecnica' => null, 'interpretacao_tecnica' => null, 'sugestao_acao' => null, 'status' => null]);
+
+        CatalogItem::query()
+            ->where('source', Source::Cronograma->value)
+            ->whereIn('code', ['10.1', '10.2', '10.1.1', '10.1.2', '10.2.1', '10.2.4.1', '10.7.4.2'])
+            ->delete();
+
+        $this->artisan('catalog:sync-normativa')->assertExitCode(0);
+
+        $this->assertSame(149, CatalogItem::query()->where('source', Source::Cronograma->value)->count());
+        $this->assertStringStartsWith('10.1.1 Esta Norma estabelece', $this->item('10.1.1')->norma_tecnica);
+        $this->assertTrue($this->item('10.1')->is_section);
+        $this->assertTrue($this->item('10.2')->is_section);
     }
 }

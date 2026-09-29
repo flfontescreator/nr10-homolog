@@ -134,7 +134,7 @@ class FuncionarioModuleTest extends TestCase
             ->assertOk()
             ->assertSee('Joana')
             ->assertSee('4.1')
-            ->assertSee('Gerenciar funcionários');
+            ->assertSee('Cadastrar funcionário');
     }
 
     public function test_document_selects_funcionario_item_for_section4_and_shows_badge(): void

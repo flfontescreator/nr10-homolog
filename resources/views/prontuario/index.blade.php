@@ -165,7 +165,7 @@
                                     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
                                         <span class="badge badge-blue">{{ $funcionariosTotal }}</span>
                                         <span>funcionário(s) com item 4 (4.1 a 4.8) do prontuário.</span>
-                                        <a class="btn btn-sm" href="{{ route('funcionarios.index') }}">Gerenciar funcionários</a>
+                                        <a href="{{ route('funcionarios.create') }}">Cadastrar funcionário</a>
                                     </div>
                                 </td>
                             </tr>
