@@ -22,12 +22,20 @@ use Illuminate\Validation\Rule;
 class NcDocumentController extends Controller
 {
     /**
-     * Itens disponíveis para compor um documento: a árvore do Cronograma de
-     * Adequação (seções/títulos com os respectivos sub-itens).
+     * Itens disponíveis para compor um documento na aba Normativa: a árvore do
+     * Cronograma de Adequação (seções/títulos com os respectivos sub-itens).
      */
     protected function availableItems()
     {
         return CatalogItem::tree(Source::Cronograma);
+    }
+
+    /**
+     * Itens disponíveis para a aba Operacional: a árvore do Prontuário NR-10.
+     */
+    protected function availableOperacionalItems()
+    {
+        return CatalogItem::tree(Source::Prontuario);
     }
 
     /**
@@ -48,6 +56,7 @@ class NcDocumentController extends Controller
 
         return view('nc-documents.create', [
             'items' => $this->availableItems(),
+            'operacional' => $this->availableOperacionalItems(),
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => [],
         ]);
@@ -147,6 +156,7 @@ class NcDocumentController extends Controller
         return view('nc-documents.edit', [
             'document' => $document,
             'items' => $this->availableItems(),
+            'operacional' => $this->availableOperacionalItems(),
             'selected' => $selected,
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => $document->libraryFiles()->pluck('evidences.id')->all(),
@@ -329,8 +339,9 @@ class NcDocumentController extends Controller
     }
 
     /**
-     * Valida a seleção de itens (seções e sub-itens do Cronograma de Adequação)
-     * e os arquivos da biblioteca opcionais a vincular ao documento.
+     * Valida a seleção de itens (seções e sub-itens dos catálogos NORMATIVO —
+     * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10) e os arquivos
+     * da biblioteca opcionais a vincular ao documento.
      */
     protected function validateSelection(Request $request): array
     {
@@ -341,7 +352,10 @@ class NcDocumentController extends Controller
             'catalog_item_ids.*' => [
                 'required',
                 'integer',
-                Rule::exists('catalog_items', 'id')->where('source', Source::Cronograma->value),
+                Rule::exists('catalog_items', 'id')->whereIn('source', [
+                    Source::Cronograma->value,
+                    Source::Prontuario->value,
+                ]),
             ],
             'evidence_ids' => ['nullable', 'array'],
             'evidence_ids.*' => [

@@ -17,8 +17,10 @@ class CronogramaOptions
     public static function condicoesIniciais(): array
     {
         return [
-            'Não Adequada',
-            'Não Avaliada',
+            'Adequado',
+            'Não adequado',
+            'Não avaliado',
+            'Não aplicado',
         ];
     }
 

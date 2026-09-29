@@ -45,7 +45,7 @@
                     <div class="form-group">
                         <label>Condição inicial</label>
                         <select name="condicao_inicial">
-                            <option value="">—</option>
+                            <option value="">-</option>
                             @foreach(\App\Support\CronogramaOptions::condicoesIniciais() as $opcao)
                                 <option value="{{ $opcao }}" @selected(old('condicao_inicial', $working->condicao_inicial) === $opcao)>{{ $opcao }}</option>
                             @endforeach
@@ -90,7 +90,7 @@
                         <input type="date" name="prazo_adequacao" value="{{ $working->prazo_adequacao?->format('Y-m-d') }}">
                     </div>
                     <div class="form-group">
-                        <label>Data da realização</label>
+                        <label>Data de verificação</label>
                         <input type="date" name="data_realizacao" value="{{ $working->data_realizacao?->format('Y-m-d') }}">
                     </div>
                     <div class="form-group">
@@ -141,7 +141,7 @@
                 </dd>
                 <dt>ID - Relatório</dt><dd>{{ $working->id_relatorio ?? '—' }}</dd>
                 <dt>Prazo de adequação</dt><dd>{{ $working->prazo_adequacao?->format('d/m/Y') ?? '—' }}</dd>
-                <dt>Data da realização</dt><dd>{{ $working->data_realizacao?->format('d/m/Y') ?? '—' }}</dd>
+                <dt>Data de verificação</dt><dd>{{ $working->data_realizacao?->format('d/m/Y') ?? '—' }}</dd>
                 <dt>Responsável</dt><dd>{{ $working->responsavel ?? '—' }}</dd>
                 <dt>Status</dt><dd>{{ $working->status?->label() ?? '—' }}</dd>
                 <dt>Descrição da não conformidade</dt><dd>{{ $working->descricao_nc ?? '—' }}</dd>

@@ -1,4 +1,6 @@
-{{-- Seleção de itens (seções/títulos e sub-itens do Cronograma de Adequação) com dados fixos do catálogo. --}}
+{{-- Seleção de itens (seções/títulos e sub-itens) dos catálogos NORMATIVO (Cronograma
+    de Adequação) e OPERACIONAL (Prontuário NR-10), com dados fixos. Os checkboxes
+    de ambas as abas são enviados no mesmo form (catalog_item_ids[]). --}}
 @php($oldSelected = old('catalog_item_ids', $selected ?? []))
 @php($oldSelected = is_array($oldSelected) ? $oldSelected : [])
 @php($library = $library ?? collect())
@@ -17,55 +19,118 @@
 
 <div class="card">
     <div class="card-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-        <h2 class="card-title" style="margin:0">Itens selecionados do Cronograma de Adequação</h2>
-        <div style="display:flex;gap:8px">
-            <button type="button" class="btn btn-sm" data-check-all>Marcar todos</button>
-            <button type="button" class="btn btn-sm btn-secondary" data-check-none>Limpar</button>
+        <h2 class="card-title" style="margin:0">Itens do documento</h2>
+        <div style="display:flex;gap:8px" data-tab-toolbar>
+            <button type="button" class="btn btn-sm active" data-tab-button="normativa">Normativa</button>
+            <button type="button" class="btn btn-sm btn-secondary" data-tab-button="operacional">Operacional</button>
         </div>
     </div>
     <p class="muted">
         Selecione as seções que se aplicam a este documento. Ao marcar a seção (título),
-        os sub-itens dela são marcados automaticamente.
+        os sub-itens dela são marcados automaticamente. Uma seção marcada entra apenas
+        como capa do documento; somente os sub-itens geram registros de trabalho.
     </p>
 
-    <div data-item-picker>
-        @foreach($items as $branch)
-            @php($section = $branch->section)
-            <div class="pick-section" style="margin-top:14px">
-                <label style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid #c9c9c9;border-radius:6px;background:#f4f6f8">
-                    <input type="checkbox" name="catalog_item_ids[]" value="{{ $section->id }}"
-                           data-check-section data-section-target="section-{{ $section->id }}"
-                           @checked(in_array($section->id, $oldSelected, true))>
-                    <span>
-                        <strong>{{ $section->code }}</strong> — {{ $section->title }}
-                        <span class="badge badge-neutral">{{ $branch->children->count() }} sub-itens</span>
-                    </span>
-                </label>
-
-                <div id="section-{{ $section->id }}" class="pick-children" style="display:grid;gap:6px;margin:6px 0 0 26px">
-                    @foreach($branch->children as $child)
-                        <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px">
-                            <input type="checkbox" name="catalog_item_ids[]" value="{{ $child->id }}"
-                                   data-section-group="section-{{ $section->id }}"
-                                   @checked(in_array($child->id, $oldSelected, true))>
-                            <span>
-                                <strong>{{ $child->code }}</strong> — {{ $child->title }}
-                                @if($child->criticidade)
-                                    <span class="badge {{ $child->criticidade === 'ALTA' ? 'badge-red' : 'badge-amber' }}">{{ $child->criticidade }}</span>
-                                @endif
-                                <span class="setores-mini" style="margin-top:4px">
-                                    @forelse($child->setores_list as $setor)
-                                        <span class="badge badge-setor">{{ $setor }}</span>
-                                    @empty
-                                        <span class="muted">—</span>
-                                    @endforelse
-                                </span>
-                            </span>
-                        </label>
-                    @endforeach
+    <div data-tab-panel="normativa">
+        <div class="card" style="box-shadow:none;border:1px solid #d9d9d9">
+            <div class="card-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <h3 class="card-title" style="margin:0">
+                    <span class="badge badge-blue">Normativa</span> Cronograma de Adequação
+                </h3>
+                <div style="display:flex;gap:8px">
+                    <button type="button" class="btn btn-sm" data-check-all>Marcar todos</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-check-none>Limpar</button>
                 </div>
             </div>
-        @endforeach
+
+            <div data-item-picker>
+                @foreach($items as $branch)
+                    @php($section = $branch->section)
+                    <div class="pick-section" style="margin-top:14px">
+                        <label style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid #c9c9c9;border-radius:6px;background:#f4f6f8">
+                            <input type="checkbox" name="catalog_item_ids[]" value="{{ $section->id }}"
+                                   data-check-section data-section-target="section-{{ $section->id }}"
+                                   @checked(in_array($section->id, $oldSelected, true))>
+                            <span>
+                                <strong>{{ $section->code }}</strong> — {{ $section->title }}
+                                <span class="badge badge-neutral">{{ $branch->children->count() }} sub-itens</span>
+                            </span>
+                        </label>
+
+                        <div id="section-{{ $section->id }}" class="pick-children" style="display:grid;gap:6px;margin:6px 0 0 26px">
+                            @foreach($branch->children as $child)
+                                <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px">
+                                    <input type="checkbox" name="catalog_item_ids[]" value="{{ $child->id }}"
+                                           data-section-group="section-{{ $section->id }}"
+                                           @checked(in_array($child->id, $oldSelected, true))>
+                                    <span>
+                                        <strong>{{ $child->code }}</strong> — {{ $child->title }}
+                                        @if($child->criticidade)
+                                            <span class="badge {{ $child->criticidade === 'ALTA' ? 'badge-red' : 'badge-amber' }}">{{ $child->criticidade }}</span>
+                                        @endif
+                                        <span class="setores-mini" style="margin-top:4px">
+                                            @forelse($child->setores_list as $setor)
+                                                <span class="badge badge-setor">{{ $setor }}</span>
+                                            @empty
+                                                <span class="muted">—</span>
+                                            @endforelse
+                                        </span>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
+    </div>
+
+    <div data-tab-panel="operacional" style="display:none">
+        <div class="card" style="box-shadow:none;border:1px solid #d9d9d9">
+            <div class="card-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+                <h3 class="card-title" style="margin:0">
+                    <span class="badge badge-green">Operacional</span> Prontuário NR-10
+                </h3>
+                <div style="display:flex;gap:8px">
+                    <a class="btn btn-sm btn-secondary" href="{{ route('prontuario.catalogo.index') }}">Gerenciar catálogo</a>
+                    <button type="button" class="btn btn-sm" data-check-all>Marcar todos</button>
+                    <button type="button" class="btn btn-sm btn-secondary" data-check-none>Limpar</button>
+                </div>
+            </div>
+
+            <div data-item-picker>
+                @foreach($operacional as $branch)
+                    @php($section = $branch->section)
+                    <div class="pick-section" style="margin-top:14px">
+                        <label style="display:flex;gap:10px;align-items:center;padding:8px;border:1px solid #c9c9c9;border-radius:6px;background:#f4f6f8">
+                            <input type="checkbox" name="catalog_item_ids[]" value="{{ $section->id }}"
+                                   data-check-section data-section-target="section-{{ $section->id }}"
+                                   @checked(in_array($section->id, $oldSelected, true))>
+                            <span>
+                                <strong>{{ $section->code }}</strong> — {{ $section->title }}
+                                <span class="badge badge-neutral">{{ $branch->children->count() }} sub-itens</span>
+                            </span>
+                        </label>
+
+                        <div id="section-{{ $section->id }}" class="pick-children" style="display:grid;gap:6px;margin:6px 0 0 26px">
+                            @foreach($branch->children as $child)
+                                <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px">
+                                    <input type="checkbox" name="catalog_item_ids[]" value="{{ $child->id }}"
+                                           data-section-group="section-{{ $section->id }}"
+                                           @checked(in_array($child->id, $oldSelected, true))>
+                                    <span>
+                                        <strong>{{ $child->code }}</strong> — {{ $child->title }}
+                                        <span class="setores-mini" style="margin-top:4px">
+                                            <span class="muted">—</span>
+                                        </span>
+                                    </span>
+                                </label>
+                            @endforeach
+                        </div>
+                    </div>
+                @endforeach
+            </div>
+        </div>
     </div>
 </div>
 
@@ -116,7 +181,7 @@
 <button class="btn" type="submit">{{ $submitLabel }}</button>
 
 @push('scripts')
-    {{-- Sem dependência do bundle: marcação em lote e sincronização seção <-> sub-itens. --}}
+    {{-- Sem dependência do bundle: marcação em lote, sincronização seção <-> sub-itens e troca de abas. --}}
     <script>
         document.querySelectorAll('[data-check-all], [data-check-none]').forEach(function (btn) {
             btn.addEventListener('click', function () {
@@ -147,6 +212,22 @@
                 if (section) {
                     syncSection(section);
                 }
+            });
+        });
+
+        document.querySelectorAll('[data-tab-button]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var target = btn.dataset.tabButton;
+                document.querySelectorAll('[data-tab-panel]').forEach(function (panel) {
+                    panel.style.display = panel.dataset.tabPanel === target ? '' : 'none';
+                });
+                document.querySelectorAll('[data-tab-button]').forEach(function (other) {
+                    if (other === btn) {
+                        other.classList.remove('btn-secondary');
+                    } else {
+                        other.classList.add('btn-secondary');
+                    }
+                });
             });
         });
     </script>

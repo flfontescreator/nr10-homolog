@@ -76,12 +76,18 @@
                     @forelse($document->items as $entry)
                         @if($entry->catalogItem->is_section)
                             <tr style="background:#f4f6f8">
-                                <td><span class="badge badge-blue">{{ $entry->catalogItem->code }}</span></td>
+                                <td>
+                                    <span class="badge badge-blue">{{ $entry->catalogItem->code }}</span>
+                                    @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem])
+                                </td>
                                 <td colspan="6" style="font-weight:700">{{ $entry->catalogItem->title }}</td>
                             </tr>
                         @else
                         <tr>
-                            <td><strong>{{ $entry->catalogItem->code }}</strong></td>
+                            <td>
+                                <strong>{{ $entry->catalogItem->code }}</strong>
+                                @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem])
+                            </td>
                             <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $entry->catalogItem->title }}">
                                 {{ $entry->catalogItem->title }}
                             </td>

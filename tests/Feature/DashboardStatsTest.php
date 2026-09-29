@@ -86,6 +86,21 @@ class DashboardStatsTest extends TestCase
         ], $attrs));
     }
 
+    protected function addItemBySource(NcDocument $document, string $source, int $offset, array $attrs = []): NcDocumentItem
+    {
+        $catalogId = CatalogItem::query()
+            ->where('source', $source)
+            ->where('is_section', false)
+            ->orderBy('sort')
+            ->offset($offset)
+            ->value('id');
+
+        return $document->items()->create(array_merge([
+            'catalog_item_id' => $catalogId,
+            'tenant_item_id' => $this->tenantItemFor($catalogId)->id,
+        ], $attrs));
+    }
+
     public function test_dashboard_renders_new_layout_with_kpis_and_secondary_cards(): void
     {
         $this->actingAs($this->manager)
@@ -100,6 +115,9 @@ class DashboardStatsTest extends TestCase
             ->assertSee('Alertas de prazo')
             ->assertSee('Previsões e riscos')
             ->assertSee('Indicadores do plano e da biblioteca')
+            ->assertSee('Não conformidades por catálogo')
+            ->assertSee('Pendências de adequação (pré-NC)')
+            ->assertSee('Não conformidades ativas (prazo vencido)')
             ->assertSee('Subitens no Cronograma')
             ->assertSee('Evidências recentes')
             ->assertSee('js/dashboard.js', false);
@@ -148,6 +166,10 @@ class DashboardStatsTest extends TestCase
                 'charts' => ['status', 'criticidade', 'evolucao', 'prazos'],
                 'previsao' => ['projecao30', 'projecao60', 'projecao90', 'risco7', 'tendencia'],
                 'secundarios' => ['cronogramaTotal', 'prontuarioTotal', 'checklistTotal', 'evidenciasCount'],
+                'ncs' => [
+                    'pendencia' => ['total', 'normativa', 'operacional'],
+                    'ativas' => ['total', 'normativa', 'operacional'],
+                ],
                 'html' => ['alertas', 'setores', 'responsaveis', 'evidencias'],
             ]);
 
@@ -197,6 +219,30 @@ class DashboardStatsTest extends TestCase
             ->getJson(route('dashboard.stats'))
             ->assertOk()
             ->assertJsonPath('kpi.total', 1);
+    }
+
+    public function test_stats_blocks_count_pre_nc_and_active_nc_with_catalog_breakdown(): void
+    {
+        $document = $this->makeDocument();
+
+        // Normativa: uma pré-NC (prazo em dia) e uma NC ativa (prazo vencido).
+        $this->addItem($document, 0, ['prazo_adequacao' => Carbon::today()->addDays(30)->toDateString()]);
+        $this->addItem($document, 1, ['prazo_adequacao' => Carbon::today()->subDay()->toDateString()]);
+
+        // Operacional: uma pré-NC (sem prazo) e uma NC ativa (prazo vencido).
+        $this->addItemBySource($document, 'prontuario', 0, ['prazo_adequacao' => null]);
+        $this->addItemBySource($document, 'prontuario', 1, ['prazo_adequacao' => Carbon::today()->subDays(5)->toDateString()]);
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->getJson(route('dashboard.stats'))
+            ->assertOk()
+            ->assertJsonPath('ncs.pendencia.total', 2)
+            ->assertJsonPath('ncs.pendencia.normativa', 1)
+            ->assertJsonPath('ncs.pendencia.operacional', 1)
+            ->assertJsonPath('ncs.ativas.total', 2)
+            ->assertJsonPath('ncs.ativas.normativa', 1)
+            ->assertJsonPath('ncs.ativas.operacional', 1);
     }
 
     public function test_stats_alerts_are_ordered_by_deadline(): void

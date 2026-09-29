@@ -68,6 +68,36 @@
         ])
     </div>
 
+    {{-- Pré-NC vs NC ativas (telemetria) --}}
+    <div class="card">
+        <h2 class="card-title">Não conformidades por catálogo</h2>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">
+            <div class="stat-card">
+                <div class="stat-value" data-nc="pendenciaTotal" style="font-size:26px">
+                    {{ number_format($stats['ncs']['pendencia']['total'], 0, ',', '.') }}
+                </div>
+                <div class="stat-label">Pendências de adequação (pré-NC)</div>
+                <div class="small muted" data-nc="pendenciaDetalhe" style="margin-top:4px">
+                    Normativa {{ $stats['ncs']['pendencia']['normativa'] }} · Operacional {{ $stats['ncs']['pendencia']['operacional'] }}
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value" data-nc="ativasTotal" style="font-size:26px">
+                    {{ number_format($stats['ncs']['ativas']['total'], 0, ',', '.') }}
+                </div>
+                <div class="stat-label">Não conformidades ativas (prazo vencido)</div>
+                <div class="small muted" data-nc="ativasDetalhe" style="margin-top:4px">
+                    Normativa {{ $stats['ncs']['ativas']['normativa'] }} · Operacional {{ $stats['ncs']['ativas']['operacional'] }}
+                </div>
+            </div>
+        </div>
+        <p class="small muted" style="margin:12px 0 0">
+            Base: subitens em aberto dentro de documentos. "Pendências de adequação" (pré-NC)
+            ainda têm prazo em dia ou sem prazo; "Não conformidades ativas" têm prazo de
+            adequação vencido.
+        </p>
+    </div>
+
     {{-- Gráficos --}}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));column-gap:16px">
         <div class="card">

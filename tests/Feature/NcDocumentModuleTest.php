@@ -66,6 +66,33 @@ class NcDocumentModuleTest extends TestCase
         ];
     }
 
+    public function test_show_renders_source_badge_per_item(): void
+    {
+        $normativaId = $this->catalogIds(1)[0];
+
+        $operacionalId = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$normativaId, $operacionalId]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertOk()
+            ->assertSee('badge-blue', false)
+            ->assertSee('Normativa')
+            ->assertSee('badge-green', false)
+            ->assertSee('Operacional');
+    }
+
     public function test_manager_can_create_document_with_selection(): void
     {
         $ids = $this->catalogIds(3);
@@ -85,6 +112,77 @@ class NcDocumentModuleTest extends TestCase
         foreach ($document->items()->get() as $entry) {
             $this->assertNotNull($entry->tenant_item_id);
         }
+    }
+
+    public function test_manager_can_create_document_with_operacional_items(): void
+    {
+        $childId = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$childId]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $entry = $document->items()->where('catalog_item_id', $childId)->firstOrFail();
+        $this->assertSame('prontuario', $entry->catalogItem->source->value);
+        $this->assertNotNull($entry->tenant_item_id);
+
+        $tenantItem = TenantItem::withoutGlobalScopes()->findOrFail($entry->tenant_item_id);
+        $this->assertSame($this->tenant->id, $tenantItem->tenant_id);
+        $this->assertSame($childId, $tenantItem->catalog_item_id);
+    }
+
+    public function test_store_accepts_mixed_normativa_and_operacional_items(): void
+    {
+        $id = $this->catalogIds(1)[0];
+
+        $childId = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$id, $childId]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+        $this->assertSame(2, $document->items()->count());
+    }
+
+    public function test_selection_rejects_checklist_items(): void
+    {
+        $checklistId = CatalogItem::query()
+            ->where('source', 'checklist')
+            ->where('is_section', false)
+            ->firstOrFail()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$checklistId]])
+            ->assertSessionHasErrors('catalog_item_ids.*');
+
+        $this->assertSame(0, NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->count());
+    }
+
+    public function test_create_page_renders_both_tabs(): void
+    {
+        $response = $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.create'))
+            ->assertOk();
+
+        $response->assertSee('data-tab-button="normativa"', false)
+            ->assertSee('data-tab-button="operacional"', false)
+            ->assertSee('data-tab-panel="normativa"', false)
+            ->assertSee('data-tab-panel="operacional"', false);
     }
 
     public function test_sections_can_be_selected_as_cover_items(): void
@@ -347,13 +445,13 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->put(route('cronograma.update', ['item' => $item, 'from' => 'document', 'document_id' => $document->id]), [
                 'criticidade' => 'ALTA',
-                'condicao_inicial' => 'Não Adequada',
+                'condicao_inicial' => 'Não adequado',
                 'status' => 'Concluído',
             ])
             ->assertSessionHas('success');
 
         $this->assertSame('ALTA', $entry->fresh()->criticidade);
-        $this->assertSame('Não Adequada', $entry->fresh()->condicao_inicial);
+        $this->assertSame('Não adequado', $entry->fresh()->condicao_inicial);
         $this->assertSame('Concluído', $entry->fresh()->status->value);
         $this->assertNull($item->fresh()->status);
         $this->assertNull($item->fresh()->criticidade);
@@ -490,7 +588,7 @@ class NcDocumentModuleTest extends TestCase
 
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
-            ->put(route('cronograma.update', $item), ['status' => 'Em andamento', 'condicao_inicial' => 'Não Adequada'])
+            ->put(route('cronograma.update', $item), ['status' => 'Em andamento', 'condicao_inicial' => 'Não adequado'])
             ->assertSessionHas('success');
 
         $this->actingAs($this->manager)
@@ -501,7 +599,7 @@ class NcDocumentModuleTest extends TestCase
         $entry = $document->items()->where('tenant_item_id', $item->id)->firstOrFail();
 
         $this->assertSame('Em andamento', $entry->fresh()->status->value);
-        $this->assertSame('Não Adequada', $entry->fresh()->condicao_inicial);
+        $this->assertSame('Não adequado', $entry->fresh()->condicao_inicial);
 
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])

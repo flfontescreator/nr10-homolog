@@ -7,11 +7,13 @@ use App\Models\CatalogItem;
 use App\Models\Evidence;
 use App\Models\Funcionario;
 use App\Models\TenantItem;
+use App\Support\CronogramaOptions;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class ProntuarioController extends Controller
@@ -71,6 +73,7 @@ class ProntuarioController extends Controller
 
         $data = $request->validate([
             'evidencias_status' => ['nullable', 'string', 'max:30', 'in:Digital,Pendente,Nao Aplicado'],
+            'condicao_inicial' => ['nullable', 'string', 'max:30', Rule::in(CronogramaOptions::condicoesIniciais())],
             'data_realizacao' => ['nullable', 'date'],
             'data_validade' => ['nullable', 'date'],
             'percentual' => ['nullable', 'numeric', 'min:0', 'max:100'],

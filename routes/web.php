@@ -11,6 +11,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoController;
 use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\NcDocumentController;
+use App\Http\Controllers\ProntuarioCatalogController;
 use App\Http\Controllers\ProntuarioController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\TwoStepController;
@@ -61,6 +62,12 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::post('cronograma/{item}/evidencias', [CronogramaController::class, 'uploadEvidence'])->name('cronograma.evidencia.upload');
         Route::post('cronograma/{item}/biblioteca', [CronogramaController::class, 'attachLibraryEvidence'])->name('cronograma.biblioteca.attach');
         Route::delete('cronograma/{item}/evidencias/{evidence}', [CronogramaController::class, 'destroyEvidenceLink'])->name('cronograma.evidencia.destroy');
+
+        Route::get('prontuario/catalogo', [ProntuarioCatalogController::class, 'index'])->name('prontuario.catalogo.index');
+        Route::post('prontuario/catalogo/secoes', [ProntuarioCatalogController::class, 'storeSection'])->name('prontuario.catalogo.section.store');
+        Route::post('prontuario/catalogo/itens', [ProntuarioCatalogController::class, 'storeItem'])->name('prontuario.catalogo.item.store');
+        Route::put('prontuario/catalogo/{catalogItem}', [ProntuarioCatalogController::class, 'update'])->name('prontuario.catalogo.update');
+        Route::delete('prontuario/catalogo/{catalogItem}', [ProntuarioCatalogController::class, 'destroy'])->name('prontuario.catalogo.destroy');
 
         Route::get('prontuario', [ProntuarioController::class, 'index'])->name('prontuario.index');
         Route::get('prontuario/{item}', [ProntuarioController::class, 'show'])->name('prontuario.show');

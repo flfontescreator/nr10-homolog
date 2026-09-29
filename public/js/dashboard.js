@@ -263,6 +263,17 @@
             });
         }
 
+        if (s.ncs) {
+            text('[data-nc="pendenciaTotal"]', num(s.ncs.pendencia.total, 0));
+            text('[data-nc="pendenciaDetalhe"]',
+                'Normativa ' + num(s.ncs.pendencia.normativa, 0) +
+                ' · Operacional ' + num(s.ncs.pendencia.operacional, 0));
+            text('[data-nc="ativasTotal"]', num(s.ncs.ativas.total, 0));
+            text('[data-nc="ativasDetalhe"]',
+                'Normativa ' + num(s.ncs.ativas.normativa, 0) +
+                ' · Operacional ' + num(s.ncs.ativas.operacional, 0));
+        }
+
         if (s.html) {
             swap('alerts-panel', s.html.alertas);
             swap('setores-panel', s.html.setores);

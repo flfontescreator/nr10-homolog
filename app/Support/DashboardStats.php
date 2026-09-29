@@ -108,6 +108,14 @@ class DashboardStats
             'alertas' => $this->alertas($open, $today),
             'setores' => $this->porSetor($items),
             'responsaveis' => $this->porResponsavel($items),
+            'ncs' => [
+                'pendencia' => $this->ncCounts(
+                    $open->reject(fn (NcDocumentItem $i) => $i->prazo_adequacao && $i->prazo_adequacao->lt($today))->values()
+                ),
+                'ativas' => $this->ncCounts(
+                    $open->filter(fn (NcDocumentItem $i) => $i->prazo_adequacao && $i->prazo_adequacao->lt($today))->values()
+                ),
+            ],
             'secundarios' => $this->secundarios(),
             'recentEvidences' => Evidence::query()
                 ->where('tenant_id', $this->tenant->id)
@@ -334,6 +342,23 @@ class DashboardStats
     private function isConcluido(NcDocumentItem $item): bool
     {
         return $item->status === ItemStatus::Concluido;
+    }
+
+    /**
+     * Contagem de NCs em aberto por catálogo para o bloco "pré-NC vs NC
+     * ativa" do dashboard. A comparação com o enum só ocorre quando o
+     * item é subitem (tem catálogo vinculado).
+     *
+     * @param  Collection<int, NcDocumentItem>  $items
+     * @return array{total: int, normativa: int, operacional: int}
+     */
+    private function ncCounts(Collection $items): array
+    {
+        return [
+            'total' => $items->count(),
+            'normativa' => $items->filter(fn (NcDocumentItem $i) => $i->catalogItem?->source === Source::Cronograma)->count(),
+            'operacional' => $items->filter(fn (NcDocumentItem $i) => $i->catalogItem?->source === Source::Prontuario)->count(),
+        ];
     }
 
     /** Data de conclusão efetiva (para reconstruir séries históricas). */

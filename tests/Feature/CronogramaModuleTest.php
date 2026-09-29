@@ -228,7 +228,7 @@ class CronogramaModuleTest extends TestCase
         $this->actingAsManager()
             ->put(route('cronograma.update', $this->item), [
                 'data_inspecao' => '2026-09-01',
-                'condicao_inicial' => 'Não Adequada',
+                'condicao_inicial' => 'Não adequado',
                 'status' => 'Em andamento',
             ])
             ->assertSessionHas('success');
@@ -236,7 +236,7 @@ class CronogramaModuleTest extends TestCase
         $fresh = $this->item->fresh();
 
         $this->assertSame('2026-09-01', $fresh->data_inspecao->format('Y-m-d'));
-        $this->assertSame('Não Adequada', $fresh->condicao_inicial);
+        $this->assertSame('Não adequado', $fresh->condicao_inicial);
         $this->assertSame('Em andamento', $fresh->status->value);
     }
 }

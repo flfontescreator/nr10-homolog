@@ -98,4 +98,45 @@ class ProntuarioModuleTest extends TestCase
             ->assertOk()
             ->assertSee('31/12/2026');
     }
+
+    public function test_prontuario_show_renders_condicao_inicial_select(): void
+    {
+        $this->actingAsManager()
+            ->get(route('prontuario.show', $this->item))
+            ->assertOk()
+            ->assertSee('name="condicao_inicial"', false)
+            ->assertSee('<option value="">-</option>', false);
+    }
+
+    public function test_valid_condicao_inicial_is_saved(): void
+    {
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'condicao_inicial' => 'Adequado',
+            ])
+            ->assertSessionHas('success');
+
+        $this->assertSame('Adequado', $this->item->fresh()->condicao_inicial);
+    }
+
+    public function test_legacy_condicao_inicial_values_are_rejected(): void
+    {
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'condicao_inicial' => 'Não Adequada',
+            ])
+            ->assertSessionHasErrors('condicao_inicial');
+
+        $this->assertNull($this->item->fresh()->condicao_inicial);
+    }
+
+    public function test_prontuario_index_renders_condicao_inicial(): void
+    {
+        $this->item->update(['condicao_inicial' => 'Não avaliado']);
+
+        $this->actingAsManager()
+            ->get(route('prontuario.index'))
+            ->assertOk()
+            ->assertSee('Não avaliado');
+    }
 }

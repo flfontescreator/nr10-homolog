@@ -40,11 +40,20 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Data da realização</label>
+                        <label>Condição inicial</label>
+                        <select name="condicao_inicial">
+                            <option value="">-</option>
+                            @foreach(\App\Support\CronogramaOptions::condicoesIniciais() as $opcao)
+                                <option value="{{ $opcao }}" @selected(old('condicao_inicial', $item->condicao_inicial) === $opcao)>{{ $opcao }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Data de verificação</label>
                         <input type="date" name="data_realizacao" value="{{ $item->data_realizacao?->format('Y-m-d') }}">
                     </div>
                     <div class="form-group">
-                        <label>Data de validade</label>
+                        <label>Validade do documento</label>
                         <input type="date" name="data_validade" value="{{ $item->data_validade?->format('Y-m-d') }}">
                     </div>
                     <div class="form-group">
@@ -69,8 +78,9 @@
         @else
             <dl class="detail-grid">
                 <dt>Evidências</dt><dd>{{ $item->evidencias_status ?? '—' }}</dd>
-                <dt>Data da realização</dt><dd>{{ $item->data_realizacao?->format('d/m/Y') ?? '—' }}</dd>
-                <dt>Data de validade</dt><dd>{{ $item->data_validade?->format('d/m/Y') ?? '—' }}</dd>
+                <dt>Condição inicial</dt><dd>{{ $item->condicao_inicial ?? '—' }}</dd>
+                <dt>Data de verificação</dt><dd>{{ $item->data_realizacao?->format('d/m/Y') ?? '—' }}</dd>
+                <dt>Validade do documento</dt><dd>{{ $item->data_validade?->format('d/m/Y') ?? '—' }}</dd>
                 <dt>Percentual</dt><dd>{{ $item->percentual !== null ? number_format($item->percentual, 0, ',', '.') . '%' : '—' }}</dd>
                 <dt>Prazo para execução</dt><dd>{{ $item->prazo_execucao?->format('d/m/Y') ?? '—' }}</dd>
                 <dt>Comentários</dt><dd>{{ $item->comentarios ?? '—' }}</dd>

@@ -33,6 +33,7 @@
         @method('PUT')
         @include('nc-documents._selection', [
             'items' => $items,
+            'operacional' => $operacional,
             'selected' => $selected,
             'title' => $document->title,
             'description' => $document->description,

@@ -8,6 +8,9 @@
             <h1>Check-list Prontuário NR-10</h1>
             <p class="subtitle">Itens do prontuário (fixos) com situação das evidências, percentual e média geral calculada.</p>
         </div>
+        @if($canWrite)
+            <a class="btn btn-secondary" href="{{ route('prontuario.catalogo.index') }}">Gerenciar catálogo operacional</a>
+        @endif
     </div>
 
     @if($tree->isEmpty())
@@ -35,8 +38,9 @@
                             <th>Código</th>
                             <th>Não conformidade</th>
                             <th>Evidências</th>
-                            <th>Realização</th>
-                            <th>Validade</th>
+                            <th>Condição inicial</th>
+                            <th>Verificação</th>
+                            <th>Validade do documento</th>
                             <th>Percentual</th>
                             <th>Arquivos</th>
                             <th class="text-right">Ação</th>
@@ -62,6 +66,7 @@
                                         <span class="muted">—</span>
                                     @endif
                                 </td>
+                                <td>{{ $row?->condicao_inicial ?? '—' }}</td>
                                 <td>{{ $row?->data_realizacao?->format('d/m/Y') ?: '—' }}</td>
                                 <td>{{ $row?->data_validade?->format('d/m/Y') ?: '—' }}</td>
                                 <td>
@@ -90,7 +95,7 @@
                         @endforeach
                         @if($section->n1 === 4)
                             <tr>
-                                <td colspan="8">
+                                <td colspan="9">
                                     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                                         <span class="badge badge-blue">{{ $funcionariosTotal }}</span>
                                         <span>funcionário(s) com item 4 (4.1 a 4.8) do prontuário.</span>
