@@ -43,11 +43,11 @@ class ChecklistController extends Controller
         $documentSources = NcDocumentItem::query()
             ->whereIn('document_id', $documents->pluck('id'))
             ->join('catalog_items', 'catalog_items.id', '=', 'nc_document_items.catalog_item_id')
-            ->select('nc_document_items.document_id', 'catalog_items.source')
+            ->select('nc_document_items.document_id', 'catalog_items.source as source_raw')
             ->distinct()
             ->get()
             ->groupBy('document_id')
-            ->map(fn ($rows) => $rows->pluck('source')->values());
+            ->map(fn ($rows) => $rows->pluck('source_raw')->values());
 
         return view('checklist.index', [
             'documents' => $documents,
@@ -116,7 +116,7 @@ class ChecklistController extends Controller
         $item->updated_by = $request->user()->id;
         $item->save();
 
-        return back()->with('success', 'Registro do item '.$item->catalogItem->code.' atualizado.');
+        return back()->with('success', 'Registro do item '.$item->display_code.' atualizado.');
     }
 
     public function uploadEvidence(Request $request, TenantItem $item): RedirectResponse

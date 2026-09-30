@@ -74,25 +74,25 @@
                 </thead>
                 <tbody>
                     @forelse($document->items as $entry)
-                        @if($entry->catalogItem->is_section)
+                        @if($entry->catalogItem && $entry->catalogItem->is_section)
                             <tr style="background:#f4f6f8">
                                 <td>
-                                    <span class="badge badge-blue">{{ $entry->catalogItem->code }}</span>
-                                    @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem])
+                                    <span class="badge badge-blue">{{ $entry->display_code }}</span>
+                                    @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem, 'source' => $entry->source])
                                 </td>
-                                <td colspan="6" style="font-weight:700">{{ $entry->catalogItem->title }}</td>
+                                <td colspan="6" style="font-weight:700">{{ $entry->display_title }}</td>
                             </tr>
                         @else
                         <tr>
                             <td>
-                                <strong>{{ $entry->catalogItem->code }}</strong>
-                                @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem])
+                                <strong>{{ $entry->display_code }}</strong>
+                                @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem, 'source' => $entry->source])
                                 @if($entry->tenantItem?->funcionario)
                                     <span class="badge badge-neutral">Func: {{ $entry->tenantItem->funcionario->nome }}</span>
                                 @endif
                             </td>
-                            <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $entry->catalogItem->title }}">
-                                {{ $entry->catalogItem->title }}
+                            <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $entry->display_title }}">
+                                {{ $entry->display_title }}
                             </td>
                             <td>@include('partials.criticidade', ['criticidade' => $entry->criticidade_efetiva])</td>
                             <td>

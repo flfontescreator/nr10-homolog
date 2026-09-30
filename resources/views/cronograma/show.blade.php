@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Cronograma — '.$item->catalogItem->code)
+@section('title', 'Cronograma — '.$item->display_code)
 
 @section('content')
 @php($cat = $item->catalogItem)
@@ -16,10 +16,10 @@
     <div class="page-header">
         <div>
             <h1>
-                <span class="badge badge-blue">{{ $cat->code }}</span>
+                <span class="badge badge-blue">{{ $item->display_code }}</span>
                 Cronograma de Adequação
             </h1>
-            <p class="subtitle">{{ $cat->title }}</p>
+            <p class="subtitle">{{ $item->display_title }}</p>
         </div>
         <a class="btn btn-secondary" href="{{ $backUrl }}">← Voltar</a>
     </div>
@@ -27,20 +27,20 @@
     <div class="card">
         <h2 class="card-title">Informações fixas do catálogo</h2>
         <dl class="detail-grid">
-            <dt>Código</dt><dd>{{ $cat->code }}</dd>
-            <dt>Norma técnica</dt><dd>{{ $cat->norma_tecnica ?: ($cat->description ?: '—') }}</dd>
-            <dt>Interpretação técnica</dt><dd>{{ $cat->interpretacao_tecnica ?: '—' }}</dd>
-            <dt>Sugestão de ação</dt><dd>{{ $cat->sugestao_acao ?: '—' }}</dd>
-            <dt>Criticidade (catálogo)</dt><dd>@include('partials.criticidade', ['criticidade' => $cat->criticidade])</dd>
+            <dt>Código</dt><dd>{{ $item->display_code }}</dd>
+            <dt>Norma técnica</dt><dd>{{ $cat?->norma_tecnica ?: ($cat?->description ?: '—') }}</dd>
+            <dt>Interpretação técnica</dt><dd>{{ $cat?->interpretacao_tecnica ?: '—' }}</dd>
+            <dt>Sugestão de ação</dt><dd>{{ $cat?->sugestao_acao ?: '—' }}</dd>
+            <dt>Criticidade (catálogo)</dt><dd>@include('partials.criticidade', ['criticidade' => $cat?->criticidade])</dd>
             <dt>Setores (catálogo)</dt>
             <dd class="setores-mini">
-                @forelse($cat->setores_list as $setor)
+                @forelse($cat?->setores_list ?: [] as $setor)
                     <span class="badge badge-setor">{{ $setor }}</span>
                 @empty
                     <span class="muted">—</span>
                 @endforelse
             </dd>
-            <dt>Detalhamento técnico</dt><dd>{{ $cat->detalhamento ?: '—' }}</dd>
+            <dt>Detalhamento técnico</dt><dd>{{ $cat?->detalhamento ?: '—' }}</dd>
         </dl>
     </div>
 

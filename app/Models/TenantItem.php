@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ItemStatus as Status;
+use App\Enums\Source;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,6 +12,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * Registro de controle de um subitem do catálogo para um cliente (tenant).
  * Uma linha por (tenant_id, catalog_item_id) — criada automaticamente na criação do cliente.
+ *
+ * Guarda cópia própria (code, title, source) para que, quando o item do
+ * catálogo operacional for excluído, o registro de trabalho do cliente
+ * permaneça como "avulso congelado" (o catálogo virou apenas base/referência).
  */
 class TenantItem extends Model
 {
@@ -20,6 +25,9 @@ class TenantItem extends Model
         'tenant_id',
         'funcionario_id',
         'catalog_item_id',
+        'code',
+        'title',
+        'source',
         'updated_by',
         'data_inspecao',
         'condicao_inicial',
@@ -52,7 +60,26 @@ class TenantItem extends Model
             'percentual' => 'decimal:2',
             'setores' => 'array',
             'status' => Status::class,
+            'source' => Source::class,
         ];
+    }
+
+    /**
+     * Código para exibição: o do catálogo quando houver vínculo; senão a cópia
+     * própria congelada.
+     */
+    public function getDisplayCodeAttribute(): string
+    {
+        return $this->catalogItem?->code ?: ($this->code ?? '—');
+    }
+
+    /**
+     * Título para exibição: o do catálogo quando houver vínculo; senão a cópia
+     * própria congelada.
+     */
+    public function getDisplayTitleAttribute(): string
+    {
+        return $this->catalogItem?->title ?: ($this->title ?? '—');
     }
 
     public function tenant(): BelongsTo
@@ -85,11 +112,9 @@ class TenantItem extends Model
      */
     public function auditLabel(): string
     {
-        $catalog = $this->catalogItem;
-
-        return $catalog
-            ? $catalog->code.' — '.$catalog->title
-            : 'Item #'.$this->id;
+        return $this->catalogItem
+            ? $this->catalogItem->code.' — '.$this->catalogItem->title
+            : ($this->code ? $this->code.' — '.$this->title : 'Item #'.$this->id);
     }
 
     /**

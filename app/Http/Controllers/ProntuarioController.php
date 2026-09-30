@@ -31,6 +31,17 @@ class ProntuarioController extends Controller
             ->get()
             ->keyBy('catalog_item_id');
 
+        // Itens avulsos: linhas de trabalho criadas a partir de itens do catálogo
+        // que foram EXCLUÍDOS da base. Continuam no prontuário do cliente com a
+        // cópia congelada (código/título), editáveis normalmente.
+        $avulso = TenantItem::query()
+            ->withCount('evidences')
+            ->where('tenant_id', $tenantId)
+            ->whereNull('catalog_item_id')
+            ->where('source', Source::Prontuario->value)
+            ->orderBy('code')
+            ->get();
+
         $averages = [];
         foreach ($tree as $branch) {
             $scope = $branch->section->n1 === 4 ? 'any' : null;
@@ -48,6 +59,7 @@ class ProntuarioController extends Controller
         return view('prontuario.index', [
             'tree' => $tree,
             'map' => $map,
+            'avulso' => $avulso,
             'averages' => $averages,
             'funcionariosTotal' => Funcionario::query()->where('tenant_id', $tenantId)->count(),
             'funcionarios' => $funcionarios,
@@ -95,7 +107,7 @@ class ProntuarioController extends Controller
         $item->updated_by = $request->user()->id;
         $item->save();
 
-        return back()->with('success', 'Registro do subitem '.$item->catalogItem->code.' atualizado.');
+        return back()->with('success', 'Registro do subitem '.$item->display_code.' atualizado.');
     }
 
     public function uploadEvidence(Request $request, TenantItem $item): RedirectResponse

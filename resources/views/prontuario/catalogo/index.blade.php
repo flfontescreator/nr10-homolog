@@ -9,9 +9,10 @@
         <div>
             <h1><span class="badge badge-green">Operacional</span> Catálogo do Prontuário NR-10</h1>
             <p class="subtitle">
-                Seções (títulos) numeradas 1..N e sub-itens "X.Y". Crie, edite ou exclua
-                itens deste catálogo. Itens vinculados a um documento de não conformidades
-                não podem ser excluídos.
+                Seções (títulos) numeradas 1..N e sub-itens "X.Y". O catálogo é a
+                base/referência do check-list prontuário: crie, edite ou exclua
+                livremente. Excluir remove o item da base; documentos e prontuários
+                de clientes que já o utilizavam continuam preservados.
             </p>
         </div>
         <a class="btn btn-secondary" href="javascript:history.back()">← Voltar</a>
@@ -43,8 +44,11 @@
                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                     <button type="button" class="btn btn-sm" data-toggle-form="edit-section-{{ $section->id }}">Editar</button>
                     <button type="button" class="btn btn-sm" data-toggle-form="new-item-{{ $section->id }}">+ Sub-item</button>
-                    @if($children->isEmpty() && $canDelete && ! $sectionLinked)
-                        <form method="POST" action="{{ route('prontuario.catalogo.destroy', $section) }}" data-confirm="Excluir a seção {{ $section->code }}?">
+                    @if($canDelete)
+                        <form method="POST" action="{{ route('prontuario.catalogo.destroy', $section) }}"
+                              data-confirm="{{ $children->isNotEmpty()
+                                  ? 'Excluir a seção '.$section->code.' e seus '.$children->count().' sub-itens do catálogo? Esta ação não pode ser desfeita. Documentos e prontuários que os utilizavam permanecem preservados.'
+                                  : 'Excluir a seção '.$section->code.' do catálogo? Esta ação não pode ser desfeita.' }}">
                             @csrf
                             @method('DELETE')
                             <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
@@ -87,8 +91,8 @@
                                     </td>
                                     <td class="text-right" style="white-space:nowrap">
                                         <button type="button" class="btn btn-sm btn-secondary" data-toggle-form="edit-item-{{ $child->id }}">Editar</button>
-                                        @if($canDelete && ! $childLinked)
-                                            <form method="POST" action="{{ route('prontuario.catalogo.destroy', $child) }}" data-confirm="Excluir o sub-item {{ $child->code }}? " style="display:inline">
+                                        @if($canDelete)
+                                            <form method="POST" action="{{ route('prontuario.catalogo.destroy', $child) }}" data-confirm="Excluir o sub-item {{ $child->code }} do catálogo? Esta ação não pode ser desfeita. Documentos e prontuários que o utilizavam permanecem preservados." style="display:inline">
                                                 @csrf
                                                 @method('DELETE')
                                                 <button class="btn btn-sm btn-danger" type="submit">Excluir</button>

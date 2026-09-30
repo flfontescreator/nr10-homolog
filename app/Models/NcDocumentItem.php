@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ItemStatus as Status;
+use App\Enums\Source;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -13,6 +14,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
  * criticidade...) — independente do TenantItem compartilhado, que é a âncora
  * do cronograma. Assim cada documento pode trabalhar o mesmo subitem em
  * ciclos distintos sem se afetarem.
+ *
+ * Guarda cópia própria (code, title, source) para que o documento continue
+ * íntegro quando o item do catálogo operacional for excluído da base.
  */
 class NcDocumentItem extends Model
 {
@@ -20,6 +24,9 @@ class NcDocumentItem extends Model
         'document_id',
         'catalog_item_id',
         'tenant_item_id',
+        'code',
+        'title',
+        'source',
         'sort_order',
         'updated_by',
         'data_inspecao',
@@ -45,7 +52,27 @@ class NcDocumentItem extends Model
             'data_realizacao' => 'date',
             'setores' => 'array',
             'status' => Status::class,
+            'source' => Source::class,
         ];
+    }
+
+    /**
+     * Código para exibição: o da cópia própria do documento (o documento é uma
+     * cópia do catálogo, não preso a ele); cai no catálogo apenas se a cópia
+     * ainda não existir.
+     */
+    public function getDisplayCodeAttribute(): string
+    {
+        return $this->code ?: ($this->catalogItem?->code ?: '—');
+    }
+
+    /**
+     * Título para exibição: o da cópia própria do documento; cai no catálogo
+     * apenas se a cópia ainda não existir.
+     */
+    public function getDisplayTitleAttribute(): string
+    {
+        return $this->title ?: ($this->catalogItem?->title ?: '—');
     }
 
     public function document(): BelongsTo
@@ -116,10 +143,8 @@ class NcDocumentItem extends Model
 
     public function auditLabel(): string
     {
-        $catalog = $this->catalogItem;
-
-        return $catalog
-            ? $catalog->code.' — '.$catalog->title
-            : 'Item #'.$this->id;
+        return $this->catalogItem
+            ? $this->catalogItem->code.' — '.$this->catalogItem->title
+            : ($this->code ? $this->code.' — '.$this->title : 'Item #'.$this->id);
     }
 }

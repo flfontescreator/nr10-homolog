@@ -1,18 +1,16 @@
 @extends('layouts.app')
 
-@section('title', 'Prontuário — '.$item->catalogItem->code)
+@section('title', 'Prontuário — '.$item->display_code)
 
 @section('content')
-    @php($cat = $item->catalogItem)
-
     <div class="page-header">
         <div>
             <h1>
-                <span class="badge badge-green">{{ $cat->code }}</span>
+                <span class="badge badge-green">{{ $item->display_code }}</span>
                 Check-list Prontuário NR-10
             </h1>
             <p class="subtitle">
-                {{ $cat->title }}
+                {{ $item->display_title }}
                 @if($item->funcionario)
                     <span class="badge badge-blue">Funcionário: {{ $item->funcionario->nome }}</span>
                 @endif

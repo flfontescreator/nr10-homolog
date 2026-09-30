@@ -254,6 +254,10 @@ class FuncionarioController extends Controller
             'tenant_id' => $funcionario->tenant_id,
             'funcionario_id' => $funcionario->id,
             'catalog_item_id' => $catalog->id,
+        ], [
+            'code' => $catalog->code,
+            'title' => $catalog->title,
+            'source' => Source::Prontuario->value,
         ]);
 
         return back()->with('success', 'Sub-item '.$catalog->code.' adicionado a '.$funcionario->nome.'.');
@@ -302,7 +306,12 @@ class FuncionarioController extends Controller
             return back()->withErrors(['catalog_item_id' => 'Este funcionário já possui o sub-item '.$catalog->code.'.']);
         }
 
-        $item->update(['catalog_item_id' => $catalog->id]);
+        $item->update([
+            'catalog_item_id' => $catalog->id,
+            'code' => $catalog->code,
+            'title' => $catalog->title,
+            'source' => Source::Prontuario->value,
+        ]);
 
         return back()->with('success', 'Sub-item alterado para '.$catalog->code.'.');
     }
@@ -333,7 +342,7 @@ class FuncionarioController extends Controller
             ]);
         }
 
-        $code = $item->catalogItem?->code ?: '#'.$item->id;
+        $code = $item->display_code;
 
         $item->delete();
 

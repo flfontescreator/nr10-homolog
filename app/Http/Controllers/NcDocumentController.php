@@ -101,7 +101,7 @@ class NcDocumentController extends Controller
                 'updated_by' => $user->id,
             ]);
 
-            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId);
+            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId, $data['preserve_item_ids'] ?? []);
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
 
             $document->recordVersion('Criação do documento', $user->id);
@@ -173,12 +173,17 @@ class NcDocumentController extends Controller
 
         $selected = [];
         $selectedTenantItemIds = [];
+        $preserveItemIds = [];
 
         foreach ($document->items as $entry) {
             if ($entry->tenant_item_id && $entry->tenantItem?->funcionario_id) {
                 $selectedTenantItemIds[] = $entry->tenant_item_id;
-            } else {
+            } elseif ($entry->catalog_item_id) {
                 $selected[] = $entry->catalog_item_id;
+            } else {
+                // Cópias sem vínculo (catálogo excluído depois da criação) são
+                // preservadas na edição — não aparecem no picker nem são removidas.
+                $preserveItemIds[] = $entry->id;
             }
         }
 
@@ -189,6 +194,7 @@ class NcDocumentController extends Controller
             'funcionarios' => $this->employeeItems(),
             'selected' => $selected,
             'selectedTenantItemIds' => $selectedTenantItemIds,
+            'preserveItemIds' => $preserveItemIds,
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => $document->libraryFiles()->pluck('evidences.id')->all(),
         ]);
@@ -215,7 +221,7 @@ class NcDocumentController extends Controller
                 'updated_by' => $request->user()->id,
             ])->save();
 
-            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId);
+            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId, $data['preserve_item_ids'] ?? []);
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
             $document->recordVersion('Atualização do documento', $request->user()->id);
         });
@@ -375,6 +381,233 @@ class NcDocumentController extends Controller
     }
 
     /**
+     * "Gerenciar documento": a versão do catálogo PARA ESTE documento. Lista as
+     * seções (capas) e sub-itens que já estão no documento (a cópia própria),
+     * permitindo adicionar itens novos como cópia, editar a cópia e removê-los —
+     * tudo sem depender do catálogo operacional.
+     */
+    public function itemsIndex(NcDocument $document): View|RedirectResponse
+    {
+        $this->assertSameTenant($document);
+        $this->authorizeWrite();
+
+        if ($document->isFinalized()) {
+            return back()->with('warning', 'O documento '.$document->code.' está finalizado e não pode ter itens alterados.');
+        }
+
+        $document->loadMissing('items.catalogItem');
+
+        $entries = $document->items;
+
+        $sections = collect();
+        $children = collect();
+        $avulso = collect();
+
+        foreach ($entries as $entry) {
+            if (! $entry->catalog_item_id) {
+                $avulso->push($entry);
+            } elseif ($entry->catalogItem?->is_section) {
+                $sections->push($entry);
+            } else {
+                $children->push($entry);
+            }
+        }
+
+        return view('nc-documents.items', [
+            'document' => $document,
+            'sections' => $sections,
+            'childrenBySection' => $children->groupBy(fn (NcDocumentItem $entry) => (string) $entry->catalogItem->n1),
+            'avulso' => $avulso,
+            'operacional' => $this->availableOperacionalItems(),
+        ]);
+    }
+
+    /**
+     * Adiciona itens ao documento a partir do catálogo (copiados para o
+     * documento — não ficam presos a ele). Uma seção entra como capa e também
+     * puxa os seus sub-itens, como na criação.
+     */
+    public function itemsAttach(Request $request, NcDocument $document): RedirectResponse
+    {
+        $this->assertSameTenant($document);
+        $this->authorizeWrite();
+
+        if ($document->isFinalized()) {
+            return back()->with('warning', 'O documento '.$document->code.' está finalizado.');
+        }
+
+        $ids = $request->validate([
+            'catalog_item_ids' => ['required', 'array', 'min:1'],
+            'catalog_item_ids.*' => [
+                'required',
+                'integer',
+                Rule::exists('catalog_items', 'id')->whereIn('source', [
+                    Source::Cronograma->value,
+                    Source::Prontuario->value,
+                ]),
+            ],
+        ])['catalog_item_ids'];
+
+        $tenantId = TenantContext::id();
+
+        $added = DB::transaction(function () use ($document, $ids, $tenantId) {
+            $existing = $document->items()->get();
+
+            $existingSigs = $existing
+                ->map(fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id))
+                ->all();
+
+            $sort = (int) $document->items()->max('sort_order') + 1;
+            $added = 0;
+
+            foreach ($this->resolveSelection(array_map('intval', $ids), [], $tenantId) as $row) {
+                $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id);
+
+                if (in_array($signature, $existingSigs, true)) {
+                    continue;
+                }
+
+                $fields = $row['tenant_item'] ? $this->importTenantState($row['tenant_item']) : [];
+
+                $document->items()->create(array_merge([
+                    'catalog_item_id' => $row['catalog_item_id'],
+                    'tenant_item_id' => $row['tenant_item']?->id,
+                    'code' => $row['code'] ?? null,
+                    'title' => $row['title'] ?? null,
+                    'source' => $row['source'] ?? null,
+                    'sort_order' => $sort,
+                ], $fields));
+
+                $sort++;
+                $added++;
+            }
+
+            return $added;
+        });
+
+        if ($added > 0) {
+            $document->recordVersion('Itens adicionados', $request->user()->id);
+            Audit::record(
+                'nc_document.items_added',
+                sprintf('%d item(ns) adicionados ao documento %s.', $added, $document->code),
+                $document,
+                $tenantId,
+                [],
+                ['catalog_item_ids' => $ids],
+                $request->user(),
+            );
+        }
+
+        return back()->with(
+            $added > 0 ? 'success' : 'info',
+            $added > 0
+                ? sprintf('%d item(ns) adicionado(s) ao documento %s — cópia própria, independente do catálogo.', $added, $document->code)
+                : 'Os itens selecionados já fazem parte do documento.',
+        );
+    }
+
+    /**
+     * Edita a cópia (code/title) de um item do documento. O catálogo não é tocado.
+     */
+    public function itemsUpdate(Request $request, NcDocument $document, NcDocumentItem $item): RedirectResponse
+    {
+        $this->assertSameTenant($document);
+        $this->authorizeWrite();
+
+        if ($item->document_id !== $document->id) {
+            abort(403);
+        }
+
+        if ($document->isFinalized()) {
+            return back()->with('warning', 'O documento '.$document->code.' está finalizado.');
+        }
+
+        $data = $request->validate([
+            'code' => ['required', 'string', 'max:30'],
+            'title' => ['required', 'string', 'max:255'],
+        ]);
+
+        $item->update([
+            'code' => $data['code'],
+            'title' => $data['title'],
+        ]);
+
+        $document->recordVersion('Item do documento atualizado', $request->user()->id);
+        Audit::record(
+            'nc_document.item_updated',
+            sprintf('Item %s do documento %s atualizado (cópia). O catálogo não foi alterado.', $data['code'], $document->code),
+            $document,
+            $document->tenant_id,
+            [],
+            ['item_id' => $item->id],
+            $request->user(),
+        );
+
+        return back()->with('success', 'Item atualizado no documento. O catálogo não foi alterado.');
+    }
+
+    /**
+     * Remove item(ns) do documento: um sub-item sai sozinho; uma seção sai junto
+     * com os sub-itens dela que estão no documento. As linhas de trabalho do
+     * cliente (TenantItem) não são apagadas.
+     */
+    public function itemsDestroy(Request $request, NcDocument $document, NcDocumentItem $item): RedirectResponse
+    {
+        $this->assertSameTenant($document);
+        $this->authorizeWrite();
+
+        if ($item->document_id !== $document->id) {
+            abort(403);
+        }
+
+        if ($document->isFinalized()) {
+            return back()->with('warning', 'O documento '.$document->code.' está finalizado.');
+        }
+
+        $removed = DB::transaction(function () use ($document, $item) {
+            $ids = collect([$item->id]);
+
+            if ($item->catalogItem && $item->catalogItem->is_section) {
+                $section = $item->catalogItem;
+
+                $childCatalogIds = CatalogItem::query()
+                    ->where('source', $section->source->value)
+                    ->where('is_section', false)
+                    ->where('n1', $section->n1)
+                    ->pluck('id');
+
+                $ids = $ids->merge(
+                    $document->items()
+                        ->whereNotNull('catalog_item_id')
+                        ->whereIn('catalog_item_id', $childCatalogIds)
+                        ->whereKeyNot($item->id)
+                        ->pluck('id'),
+                );
+            }
+
+            foreach ($document->items()->whereIn('id', $ids)->get() as $entry) {
+                $this->removeItemLinks($entry);
+                $entry->delete();
+            }
+
+            return $ids->count();
+        });
+
+        $document->recordVersion('Itens removidos', $request->user()->id);
+        Audit::record(
+            'nc_document.items_removed',
+            sprintf('%d item(ns) removidos do documento %s.', $removed, $document->code),
+            $document,
+            $document->tenant_id,
+            [],
+            [],
+            $request->user(),
+        );
+
+        return back()->with('success', sprintf('%d item(ns) removido(s) do documento.', $removed));
+    }
+
+    /**
      * Valida a seleção de itens (seções e sub-itens dos catálogos NORMATIVO —
      * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10), os sub-itens
      * INDIVIDUAIS por funcionário (item 4) e os arquivos da biblioteca opcionais.
@@ -415,6 +648,10 @@ class NcDocumentController extends Controller
                     }
                 },
             ],
+            // Cópias do documento sem vínculo com o catálogo (avulsas) entram no
+            // form apenas para serem PRESERVADAS: a seleção do picker não as derruba.
+            'preserve_item_ids' => ['sometimes', 'array'],
+            'preserve_item_ids.*' => ['required', 'integer'],
             'evidence_ids' => ['nullable', 'array'],
             'evidence_ids.*' => [
                 'integer',
@@ -440,17 +677,24 @@ class NcDocumentController extends Controller
      * Itens que ficam na seleção PRESERVAM o estado POR DOCUMENTO (ids estáveis);
      * itens novos são inicializados a partir do estado atual do TenantItem.
      */
-    protected function syncItems(NcDocument $document, array $catalogItemIds, array $tenantItemIds, int $tenantId): void
+    protected function syncItems(NcDocument $document, array $catalogItemIds, array $tenantItemIds, int $tenantId, array $preserveItemIds = []): void
     {
         $existing = $document->items()->get();
 
-        $selection = $this->resolveSelection($catalogItemIds, $tenantItemIds, $tenantId);
-
-        $selectedBySignature = collect($selection)
+        $selectedBySignature = collect($selection = $this->resolveSelection($catalogItemIds, $tenantItemIds, $tenantId))
             ->keyBy(fn ($row) => $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id));
 
+        // Cópias do documento sem vínculo com o catálogo (avulsas) são passadas
+        // pelo form apenas para serem PRESERVADAS — a seleção do picker não as derruba.
+        $existingById = $existing->keyBy('id');
+        $preservedIds = collect($preserveItemIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $existingById->has($id))
+            ->all();
+
         $removed = $existing->filter(
-            fn (NcDocumentItem $entry) => ! $selectedBySignature->has($this->entrySignature($entry->catalog_item_id, $entry->tenant_item_id)),
+            fn (NcDocumentItem $entry) => ! in_array($entry->id, $preservedIds, true)
+                && ! $selectedBySignature->has($this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id)),
         );
 
         foreach ($removed as $entry) {
@@ -459,7 +703,7 @@ class NcDocumentController extends Controller
         }
 
         $keyed = $existing->keyBy(
-            fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id, $entry->tenant_item_id),
+            fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id),
         );
 
         $sort = 0;
@@ -468,18 +712,24 @@ class NcDocumentController extends Controller
             $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id);
             $entry = $keyed->get($signature);
 
-            $fields = [];
-
-            if (! $entry && $row['tenant_item']) {
-                $fields = $this->importTenantState($row['tenant_item']);
-            }
-
             if ($entry) {
+                // O documento é uma cópia do catálogo, não preso a ele: a cópia
+                // (code/title/source) fica CONGELADA no momento em que o item entrou
+                // no documento. Apenas a ordem é ajustada na seleção.
                 $entry->update(['sort_order' => $sort]);
             } else {
+                $fields = [];
+
+                if ($row['tenant_item']) {
+                    $fields = $this->importTenantState($row['tenant_item']);
+                }
+
                 $document->items()->create(array_merge([
                     'catalog_item_id' => $row['catalog_item_id'],
                     'tenant_item_id' => $row['tenant_item']?->id,
+                    'code' => $row['code'] ?? null,
+                    'title' => $row['title'] ?? null,
+                    'source' => $row['source'] ?? null,
                     'sort_order' => $sort,
                 ], $fields));
             }
@@ -532,17 +782,23 @@ class NcDocumentController extends Controller
 
                 $tenantItem ??= TenantItem::firstOrCreate(
                     ['tenant_id' => $tenantId, 'catalog_item_id' => $catalogItemId],
+                    ['code' => $catalog->code, 'title' => $catalog->title, 'source' => $catalog->source->value],
                 );
             }
 
             $rows[] = [
                 'catalog_item_id' => (int) $catalogItemId,
                 'tenant_item' => $tenantItem,
+                // Cópia congelada: garante que o documento não depende do catálogo.
+                'code' => $tenantItem?->code ?? $catalog->code,
+                'title' => $tenantItem?->title ?? $catalog->title,
+                'source' => $tenantItem?->source?->value ?? $catalog->source->value,
             ];
         }
 
         $selectedTenantIds = array_values(array_unique(array_map('intval', $tenantItemIds)));
         $tenantItems = TenantItem::query()
+            ->with('catalogItem')
             ->whereIn('id', $selectedTenantIds)
             ->where('tenant_id', $tenantId)
             ->whereNotNull('funcionario_id')
@@ -559,6 +815,9 @@ class NcDocumentController extends Controller
             $rows[] = [
                 'catalog_item_id' => (int) $tenantItem->catalog_item_id,
                 'tenant_item' => $tenantItem,
+                'code' => $tenantItem->code ?? $tenantItem->catalogItem?->code,
+                'title' => $tenantItem->title ?? $tenantItem->catalogItem?->title,
+                'source' => $tenantItem->source?->value ?? $tenantItem->catalogItem?->source?->value,
             ];
         }
 

@@ -220,7 +220,7 @@ class CronogramaController extends Controller
 
             Audit::record(
                 'nc_document_item.updated',
-                sprintf('Documento %s — subitem %s atualizado.', $document->code, $working->catalogItem->code),
+                sprintf('Documento %s — subitem %s atualizado.', $document->code, $working->display_code),
                 $working,
                 $tenantId,
                 $before,
@@ -233,7 +233,7 @@ class CronogramaController extends Controller
             $item->save();
         }
 
-        return back()->with('success', 'Registro do subitem '.$item->catalogItem->code.' atualizado.');
+        return back()->with('success', 'Registro do subitem '.$item->display_code.' atualizado.');
     }
 
     /**
@@ -356,7 +356,7 @@ class CronogramaController extends Controller
 
             Audit::record(
                 'nc_document.evidence_item_linked',
-                sprintf('%d arquivo(s) da biblioteca vinculado(s) ao subitem %s de %s.', count($ids), $working->catalogItem->code, $document->code),
+                sprintf('%d arquivo(s) da biblioteca vinculado(s) ao subitem %s de %s.', count($ids), $working->display_code, $document->code),
                 $document,
                 $tenantId,
                 [],

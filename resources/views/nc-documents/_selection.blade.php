@@ -12,6 +12,15 @@
 @php($funcionarioBackParams = ($document ?? null)
     ? ['from' => 'document', 'document_id' => $document->id]
     : ['from' => 'document'])
+@php($preserveItemIds = $preserveItemIds ?? [])
+@php($preserveItemIds = is_array($preserveItemIds) ? $preserveItemIds : [])
+@php($isEditing = ($document ?? null) !== null)
+
+{{-- Cópias do documento sem vínculo com o catálogo (avulsas) navegam por este
+     form apenas para serem PRESERVADAS (a seleção do picker não as derruba). --}}
+@foreach($preserveItemIds as $preserveId)
+    <input type="hidden" name="preserve_item_ids[]" value="{{ $preserveId }}">
+@endforeach
 
 <div class="form-group">
     <label>Título do documento</label>
@@ -99,7 +108,11 @@
                 </h3>
                 <div style="display:flex;gap:8px">
                     <a class="btn btn-sm" href="{{ route('funcionarios.create', $funcionarioBackParams) }}">+ Cadastrar funcionário</a>
-                    <a class="btn btn-sm btn-secondary" href="{{ route('prontuario.catalogo.index') }}">Gerenciar catálogo</a>
+                    @if($isEditing)
+                        <a class="btn btn-sm btn-secondary" href="{{ route('nc-documents.items.index', $document) }}">Gerenciar documento</a>
+                    @else
+                        <a class="btn btn-sm btn-secondary" href="{{ route('prontuario.catalogo.index') }}">Gerenciar catálogo</a>
+                    @endif
                     <button type="button" class="btn btn-sm" data-check-all>Marcar todos</button>
                     <button type="button" class="btn btn-sm btn-secondary" data-check-none>Limpar</button>
                 </div>

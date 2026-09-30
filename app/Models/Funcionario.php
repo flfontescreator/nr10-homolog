@@ -52,17 +52,20 @@ class Funcionario extends Model
             ->orderBy('n1')
             ->orderBy('n2')
             ->orderBy('n3')
-            ->pluck('id');
+            ->get();
 
         $existing = $this->items()->pluck('catalog_item_id');
 
         $now = now();
         $rows = $subitems
-            ->reject(fn ($id) => $existing->contains($id))
-            ->map(fn ($id) => [
+            ->reject(fn ($catalog) => $existing->contains($catalog->id))
+            ->map(fn ($catalog) => [
                 'tenant_id' => $this->tenant_id,
                 'funcionario_id' => $this->id,
-                'catalog_item_id' => $id,
+                'catalog_item_id' => $catalog->id,
+                'code' => $catalog->code,
+                'title' => $catalog->title,
+                'source' => $catalog->source,
                 'created_at' => $now,
                 'updated_at' => $now,
             ])

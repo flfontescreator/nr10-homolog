@@ -117,9 +117,9 @@ class NcDocument extends Model
                 $catalog = $entry->catalogItem;
 
                 return [
-                    'code' => $catalog->code,
-                    'title' => $catalog->title,
-                    'criticidade' => $entry->criticidade ?: $catalog->criticidade,
+                    'code' => $entry->code ?: ($catalog?->code ?? '—'),
+                    'title' => $entry->title ?: ($catalog?->title ?? '—'),
+                    'criticidade' => $entry->criticidade ?: $catalog?->criticidade,
                     'setores' => $entry->setores_list,
                     'status' => $entry->status?->value,
                     'condicao_inicial' => $entry->condicao_inicial,

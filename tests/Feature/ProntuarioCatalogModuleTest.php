@@ -327,7 +327,7 @@ class ProntuarioCatalogModuleTest extends TestCase
         $this->assertSame('Novo título', $item->fresh()->title);
     }
 
-    public function test_subitem_deletion_blocked_when_linked_to_document(): void
+    public function test_subitem_in_document_can_be_deleted_and_document_survives(): void
     {
         $child = CatalogItem::query()
             ->where('source', 'prontuario')
@@ -340,13 +340,30 @@ class ProntuarioCatalogModuleTest extends TestCase
             ->assertRedirect();
 
         $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
-        $this->assertSame(1, $document->items()->count());
+        $entry = $document->items()->firstOrFail();
+        $this->assertSame($child->id, $entry->catalog_item_id);
 
+        // O catálogo agora é base/referência: mesmo vinculado a um documento,
+        // o sub-item pode ser excluído.
         $this->actingAsUser($this->admin)
             ->delete(route('prontuario.catalogo.destroy', $child))
-            ->assertSessionHas('error');
+            ->assertSessionHas('success');
 
-        $this->assertNotNull($child->fresh());
+        $this->assertNull($child->fresh());
+
+        // O item do documento sobrevive: vínculo zerado com a cópia congelada.
+        $entry->refresh();
+        $this->assertNull($entry->catalog_item_id);
+        $this->assertSame($child->code, $entry->code);
+        $this->assertSame($child->title, $entry->title);
+        $this->assertSame('prontuario', $entry->source?->value);
+
+        // A linha de trabalho do cliente vira "avulso": preservada, sem vínculo.
+        $this->assertTrue(TenantItem::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->id)
+            ->whereNull('catalog_item_id')
+            ->where('code', $child->code)
+            ->exists());
     }
 
     public function test_subitem_deletion_works_after_document_removed(): void
@@ -372,22 +389,115 @@ class ProntuarioCatalogModuleTest extends TestCase
 
         $this->assertNull($child->fresh());
         $this->assertSame(0, TenantItem::withoutGlobalScopes()->where('catalog_item_id', $child->id)->count());
+
+        // As linhas de trabalho dos dois clientes permanecem como avulso.
+        $this->assertSame(2, TenantItem::withoutGlobalScopes()
+            ->whereNull('catalog_item_id')
+            ->where('code', $child->code)
+            ->count());
     }
 
-    public function test_section_deletion_blocked_when_it_has_children(): void
+    public function test_section_with_children_deletes_children_and_renumbers(): void
     {
         $section = $this->prontuarioSection(1);
-        $this->assertTrue(CatalogItem::query()
+        $child = CatalogItem::query()
             ->where('source', 'prontuario')
             ->where('is_section', false)
-            ->where('code', 'like', '1.%')
-            ->exists());
+            ->where('n1', 1)
+            ->where('n2', 1)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->manager)
+            ->post(route('prontuario.catalogo.section.store'), ['title' => 'Seção seguinte']);
+
+        $following = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', true)
+            ->where('title', 'Seção seguinte')
+            ->firstOrFail();
+        $oldFollowingN1 = (int) $following->n1;
 
         $this->actingAsUser($this->admin)
             ->delete(route('prontuario.catalogo.destroy', $section))
-            ->assertSessionHas('error');
+            ->assertSessionHas('success');
 
-        $this->assertNotNull($section->fresh());
+        // A seção e os sub-itens dela saem da base juntos.
+        $this->assertNull($section->fresh());
+        $this->assertNull($child->fresh());
+
+        // A seção seguinte sobe para fechar a lacuna (com renumerção).
+        $following->refresh();
+        $this->assertSame($oldFollowingN1 - 1, (int) $following->n1);
+
+        // Linhas de trabalho do cliente viram "avulso" preservado.
+        $this->assertTrue(TenantItem::withoutGlobalScopes()
+            ->whereNull('catalog_item_id')
+            ->where('source', 'prontuario')
+            ->where('code', $child->code)
+            ->exists());
+    }
+
+    public function test_avulso_items_remain_editable_in_prontuario_with_snapshot(): void
+    {
+        $child = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $child))
+            ->assertSessionHas('success');
+
+        $avulso = TenantItem::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->id)
+            ->whereNull('catalog_item_id')
+            ->where('code', $child->code)
+            ->firstOrFail();
+
+        // A zona "avulso" do check-list prontuário exibe o item preservado.
+        $this->actingAsUser($this->manager)
+            ->get(route('prontuario.index'))
+            ->assertOk()
+            ->assertSee('Itens avulsos')
+            ->assertSee($child->code)
+            ->assertSee($child->title);
+
+        // A tela de trabalho usa a cópia congelada e continua editável.
+        $this->actingAsUser($this->manager)
+            ->get(route('prontuario.show', $avulso))
+            ->assertOk()
+            ->assertSee($child->code);
+
+        $this->actingAsUser($this->manager)
+            ->put(route('prontuario.update', $avulso), ['percentual' => 75])
+            ->assertSessionHas('success');
+
+        $this->assertSame(75.0, (float) $avulso->fresh()->percentual);
+    }
+
+    public function test_document_show_renders_snapshot_after_catalog_deletion(): void
+    {
+        $child = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail();
+
+        $this->actingAsUser($this->manager)
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$child->id]]);
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->actingAsUser($this->admin)
+            ->delete(route('prontuario.catalogo.destroy', $child));
+
+        // O documento mostra o item pela cópia congelada (código e título).
+        $this->actingAsUser($this->manager)
+            ->get(route('nc-documents.show', $document))
+            ->assertOk()
+            ->assertSee($child->code)
+            ->assertSee($child->title);
     }
 
     public function test_section_without_children_can_be_deleted(): void

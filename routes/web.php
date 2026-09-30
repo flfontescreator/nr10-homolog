@@ -94,6 +94,10 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::post('checklist/documentos', [NcDocumentController::class, 'store'])->name('nc-documents.store');
         Route::get('checklist/documentos/{document}', [NcDocumentController::class, 'show'])->name('nc-documents.show');
         Route::get('checklist/documentos/{document}/editar', [NcDocumentController::class, 'edit'])->name('nc-documents.edit');
+        Route::get('checklist/documentos/{document}/itens', [NcDocumentController::class, 'itemsIndex'])->name('nc-documents.items.index');
+        Route::post('checklist/documentos/{document}/itens', [NcDocumentController::class, 'itemsAttach'])->name('nc-documents.items.attach');
+        Route::put('checklist/documentos/{document}/itens/{item}', [NcDocumentController::class, 'itemsUpdate'])->name('nc-documents.items.update');
+        Route::delete('checklist/documentos/{document}/itens/{item}', [NcDocumentController::class, 'itemsDestroy'])->name('nc-documents.items.destroy');
         Route::put('checklist/documentos/{document}', [NcDocumentController::class, 'update'])->name('nc-documents.update');
         Route::post('checklist/documentos/{document}/finalizar', [NcDocumentController::class, 'finalize'])->name('nc-documents.finalize');
         Route::post('checklist/documentos/{document}/reabrir', [NcDocumentController::class, 'reopen'])->name('nc-documents.reopen');

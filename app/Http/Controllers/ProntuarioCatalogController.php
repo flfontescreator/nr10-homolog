@@ -10,6 +10,7 @@ use App\Models\TenantItem;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 /**
@@ -140,10 +141,10 @@ class ProntuarioCatalogController extends Controller
 
         // Mantém o invariante do catálogo: todo sub-item tem tenant_items por cliente.
         foreach (Tenant::query()->pluck('id') as $tenantId) {
-            TenantItem::withoutGlobalScopes()->firstOrCreate([
-                'tenant_id' => $tenantId,
-                'catalog_item_id' => $item->id,
-            ]);
+            TenantItem::withoutGlobalScopes()->firstOrCreate(
+                ['tenant_id' => $tenantId, 'catalog_item_id' => $item->id],
+                ['code' => $item->code, 'title' => $item->title, 'source' => Source::Prontuario->value],
+            );
         }
 
         return redirect()->route('prontuario.catalogo.index')
@@ -172,37 +173,47 @@ class ProntuarioCatalogController extends Controller
 
         $this->assertProntuarioCatalogItem($catalogItem);
 
-        if (NcDocumentItem::query()->where('catalog_item_id', $catalogItem->id)->exists()) {
-            return back()->with('error', 'O item '.$catalogItem->code.' está vinculado a um documento de não conformidades. Remova o vínculo antes de excluir.');
-        }
-
-        if ($catalogItem->is_section) {
-            $hasChildren = CatalogItem::query()
-                ->where('source', Source::Prontuario->value)
-                ->where('is_section', false)
-                ->where('code', 'like', $catalogItem->code.'.%')
-                ->exists();
-
-            if ($hasChildren) {
-                return back()->with('error', 'A seção '.$catalogItem->code.' ainda possui sub-itens. Exclua os sub-itens antes.');
-            }
-        }
-
         $code = $catalogItem->code;
         $isSection = $catalogItem->is_section;
         $sectionN1 = (int) $catalogItem->n1;
+        $childCount = 0;
 
-        $catalogItem->delete();
+        DB::transaction(function () use ($catalogItem, $isSection, $sectionN1, &$childCount) {
+            if ($isSection) {
+                $removed = CatalogItem::query()
+                    ->where('source', Source::Prontuario->value)
+                    ->where('is_section', false)
+                    ->where('n1', $sectionN1)
+                    ->get();
 
-        // Renumeração do grupo após a exclusão: a lacuna é fechada (4.2 vira 4.1,
-        // 4.3 vira 4.2, ...) e um novo item passa a ir para o final.
+                $childCount = $removed->count();
+
+                // A seção exclui junto os sub-itens (renumeração depois). Documentos
+                // e linhas de trabalho dos clientes continuam preservados via cópia
+                // própria (FK catalog_item_id em SET NULL).
+                CatalogItem::query()
+                    ->where('source', Source::Prontuario->value)
+                    ->where('is_section', false)
+                    ->where('n1', $sectionN1)
+                    ->delete();
+            }
+
+            $catalogItem->delete();
+        });
+
         if ($isSection) {
             $this->renumberSections($sectionN1);
+
+            $message = $childCount > 0
+                ? 'Seção '.$code.' e '.$childCount.' sub-itens removidos do catálogo. Documentos e prontuários que os utilizavam foram preservados.'
+                : 'Seção '.$code.' removida do catálogo. Documentos e prontuários que a utilizavam foram preservados.';
         } else {
             $this->renumberSubitems($sectionN1);
+
+            $message = 'Sub-item '.$code.' removido do catálogo. Documentos e prontuários que o utilizavam foram preservados.';
         }
 
-        return back()->with('success', 'Item '.$code.' removido do catálogo operacional.');
+        return back()->with('success', $message);
     }
 
     /**

@@ -356,8 +356,8 @@ class DashboardStats
     {
         return [
             'total' => $items->count(),
-            'normativa' => $items->filter(fn (NcDocumentItem $i) => $i->catalogItem?->source === Source::Cronograma)->count(),
-            'operacional' => $items->filter(fn (NcDocumentItem $i) => $i->catalogItem?->source === Source::Prontuario)->count(),
+            'normativa' => $items->filter(fn (NcDocumentItem $i) => ($i->catalogItem?->source ?? $i->source) === Source::Cronograma)->count(),
+            'operacional' => $items->filter(fn (NcDocumentItem $i) => ($i->catalogItem?->source ?? $i->source) === Source::Prontuario)->count(),
         ];
     }
 

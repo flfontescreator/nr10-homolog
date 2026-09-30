@@ -65,7 +65,7 @@ class Tenant extends Model
             ->orderBy('n2')
             ->orderBy('n3')
             ->orderBy('n4')
-            ->get(['id']);
+            ->get(['id', 'code', 'title', 'source']);
 
         // A unique key inclui funcionario_id; com NULL o MySQL não deduplica,
         // então a exclusividade das linhas gerais é garantida aqui na aplicação.
@@ -84,6 +84,9 @@ class Tenant extends Model
         $rows = $subitems->map(fn ($item) => [
             'tenant_id' => $this->id,
             'catalog_item_id' => $item->id,
+            'code' => $item->code,
+            'title' => $item->title,
+            'source' => $item->source,
             // setores fica NULL (não tocado): o item mostra o catálogo ao vivo,
             // podendo ser zerado ([]) ou personalizado ([...]) pelo usuário.
             'setores' => null,

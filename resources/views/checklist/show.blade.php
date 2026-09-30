@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', 'Check-list — '.$item->catalogItem->code)
+@section('title', 'Check-list — '.$item->display_code)
 
 @section('content')
     @php($cat = $item->catalogItem)
@@ -8,10 +8,10 @@
     <div class="page-header">
         <div>
             <h1>
-                <span class="badge badge-blue">{{ $cat->code }}</span>
+                <span class="badge badge-blue">{{ $item->display_code }}</span>
                 Não Conformidades
             </h1>
-            <p class="subtitle">{{ $cat->title }}</p>
+            <p class="subtitle">{{ $item->display_title }}</p>
         </div>
         <a class="btn btn-secondary" href="{{ route('checklist.index') }}">← Voltar</a>
     </div>
@@ -19,7 +19,7 @@
     <div class="card">
         <h2 class="card-title">
             Campos de controle
-            @if($cat->criticidade)
+            @if($cat?->criticidade)
                 @include('partials.criticidade', ['criticidade' => $cat->criticidade])
             @endif
         </h2>
@@ -131,7 +131,7 @@
     <div class="card">
         <h2 class="card-title">Informações fixas do catálogo</h2>
         <dl class="detail-grid">
-            <dt>Código</dt><dd>{{ $cat->code }}</dd>
+            <dt>Código</dt><dd>{{ $cat?->code ?: $item->display_code }}</dd>
             <dt>Criticidade</dt><dd>{{ $cat->criticidade ?: '—' }}</dd>
             <dt>Setor</dt><dd>{{ $cat->setor ?: '—' }}</dd>
             <dt>Detalhamento técnico</dt><dd>{{ $cat->detalhamento ?: '—' }}</dd>
