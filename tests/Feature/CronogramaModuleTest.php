@@ -65,16 +65,21 @@ class CronogramaModuleTest extends TestCase
             ->assertSee('Criticidade');
     }
 
-    public function test_cronograma_show_fixed_block_is_on_top_with_only_code_and_technical_detail(): void
+    public function test_cronograma_show_fixed_block_is_on_top_with_full_catalog_info(): void
     {
+        $cat = $this->item->catalogItem->fresh();
+
         $this->actingAsManager()
             ->get(route('cronograma.show', $this->item))
             ->assertOk()
             ->assertSeeInOrder(['Informações fixas do catálogo', 'Campos de controle'])
-            ->assertSee($this->item->catalogItem->code)
-            ->assertSee($this->item->catalogItem->detalhamento)
-            ->assertDontSee('Criticidade (catálogo)')
-            ->assertDontSee('Setor (catálogo)');
+            ->assertSee($cat->code)
+            ->assertSee('Norma técnica')
+            ->assertSee('Interpretação técnica')
+            ->assertSee('Sugestão de ação')
+            ->assertSee('Criticidade (catálogo)')
+            ->assertSee('Setores (catálogo)')
+            ->assertSee($cat->detalhamento);
     }
 
     public function test_grid_badge_reflects_criticidade_worked_in_open_document(): void

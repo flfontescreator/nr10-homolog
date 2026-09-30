@@ -33,7 +33,7 @@
         @php($sectionLinked = in_array($section->id, $linkedToDocument, true))
         <div class="card">
             <div class="card-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-                <h2 class="card-title" style="margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <h2 class="card-title" style="margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;overflow-wrap:anywhere;word-break:break-word;min-width:0">
                     <span class="badge badge-green">{{ $section->code }}</span>
                     {{ $section->title }}
                     @if($sectionLinked)
@@ -79,7 +79,7 @@
                                 @php($childLinked = in_array($child->id, $linkedToDocument, true))
                                 <tr>
                                     <td style="width:70px"><strong>{{ $child->code }}</strong></td>
-                                    <td>
+                                    <td style="overflow-wrap:anywhere;word-break:break-word;min-width:0">
                                         {{ $child->title }}
                                         @if($childLinked)
                                             <span class="badge badge-red">em documento</span>

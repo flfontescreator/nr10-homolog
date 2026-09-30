@@ -28,6 +28,18 @@
         <h2 class="card-title">Informações fixas do catálogo</h2>
         <dl class="detail-grid">
             <dt>Código</dt><dd>{{ $cat->code }}</dd>
+            <dt>Norma técnica</dt><dd>{{ $cat->norma_tecnica ?: ($cat->description ?: '—') }}</dd>
+            <dt>Interpretação técnica</dt><dd>{{ $cat->interpretacao_tecnica ?: '—' }}</dd>
+            <dt>Sugestão de ação</dt><dd>{{ $cat->sugestao_acao ?: '—' }}</dd>
+            <dt>Criticidade (catálogo)</dt><dd>@include('partials.criticidade', ['criticidade' => $cat->criticidade])</dd>
+            <dt>Setores (catálogo)</dt>
+            <dd class="setores-mini">
+                @forelse($cat->setores_list as $setor)
+                    <span class="badge badge-setor">{{ $setor }}</span>
+                @empty
+                    <span class="muted">—</span>
+                @endforelse
+            </dd>
             <dt>Detalhamento técnico</dt><dd>{{ $cat->detalhamento ?: '—' }}</dd>
         </dl>
     </div>
@@ -90,10 +102,6 @@
                         </div>
                     </div>
                     <div class="form-group">
-                        <label>ID - Relatório</label>
-                        <input type="text" name="id_relatorio" maxlength="60" value="{{ old('id_relatorio', $working->id_relatorio) }}">
-                    </div>
-                    <div class="form-group">
                         <label>Prazo de adequação</label>
                         <input type="date" name="prazo_adequacao" value="{{ $working->prazo_adequacao?->format('Y-m-d') }}">
                     </div>
@@ -147,7 +155,6 @@
                         <span class="muted">—</span>
                     @endforelse
                 </dd>
-                <dt>ID - Relatório</dt><dd>{{ $working->id_relatorio ?? '—' }}</dd>
                 <dt>Prazo de adequação</dt><dd>{{ $working->prazo_adequacao?->format('d/m/Y') ?? '—' }}</dd>
                 <dt>Data de verificação</dt><dd>{{ $working->data_realizacao?->format('d/m/Y') ?? '—' }}</dd>
                 <dt>Responsável</dt><dd>{{ $working->responsavel ?? '—' }}</dd>

@@ -77,6 +77,10 @@ class FuncionarioController extends Controller
         // "Voltar" da página do funcionário retornar ao documento.
         $redirectParams = ['funcionario' => $funcionario];
 
+        if ($request->query('from') === 'prontuario') {
+            $redirectParams['from'] = 'prontuario';
+        }
+
         if ($request->query('from') === 'document') {
             $redirectParams['from'] = 'document';
 
@@ -399,6 +403,10 @@ class FuncionarioController extends Controller
      */
     protected function documentBackUrl(Request $request): ?string
     {
+        if ($request->query('from') === 'prontuario') {
+            return route('prontuario.index');
+        }
+
         if ($request->query('from') !== 'document') {
             return null;
         }

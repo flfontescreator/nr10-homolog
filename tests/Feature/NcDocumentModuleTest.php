@@ -693,6 +693,31 @@ class NcDocumentModuleTest extends TestCase
         $this->assertNull($item->fresh()->status);
     }
 
+    public function test_new_document_items_default_to_nao_adequado(): void
+    {
+        $branch = CatalogItem::tree(Source::Cronograma)->first();
+        $normativaChild = $branch->children->first()->id;
+
+        $operacionalChild = CatalogItem::query()
+            ->where('source', 'prontuario')
+            ->where('is_section', false)
+            ->where('n1', '!=', 4)
+            ->firstOrFail()->id;
+
+        $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->post(route('nc-documents.store'), ['catalog_item_ids' => [$normativaChild, $operacionalChild]])
+            ->assertRedirect();
+
+        $document = NcDocument::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
+        $this->assertSame(2, $document->items()->count());
+
+        foreach ($document->items()->get() as $entry) {
+            $this->assertSame('Não adequado', $entry->fresh()->condicao_inicial);
+        }
+    }
+
     public function test_document_working_state_starts_from_tenant_and_diverges(): void
     {
         $branch = CatalogItem::tree(Source::Cronograma)->first();

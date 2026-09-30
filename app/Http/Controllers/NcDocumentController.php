@@ -681,13 +681,15 @@ class NcDocumentController extends Controller
 
     /**
      * Estado inicial do item no documento: uma cópia dos campos de controle
-     * atuais do TenantItem (o documento "nasce" refletindo o cronograma).
+     * atuais do TenantItem. A condição inicial sempre nasce como "Não adequado"
+     * (documento de não conformidades começa com todos os sub-itens marcados),
+     * divergindo do cronograma.
      */
     protected function importTenantState(TenantItem $tenantItem): array
     {
         return [
             'data_inspecao' => $tenantItem->data_inspecao,
-            'condicao_inicial' => $tenantItem->condicao_inicial,
+            'condicao_inicial' => 'Não adequado',
             'setor' => $tenantItem->setor,
             'setores' => $tenantItem->setores,
             'criticidade' => $tenantItem->criticidade,

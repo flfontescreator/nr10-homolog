@@ -8,7 +8,7 @@
             <h1>Editar funcionário</h1>
             <p class="subtitle">{{ $funcionario->nome }}</p>
         </div>
-        <a class="btn btn-secondary" href="{{ route('funcionarios.show', $funcionario) }}">← Voltar</a>
+        <a class="btn btn-secondary" href="{{ request()->filled('from') ? route('funcionarios.show', ['funcionario' => $funcionario, 'from' => request()->query('from')]) : route('funcionarios.show', $funcionario) }}">← Voltar</a>
     </div>
 
     <div class="card" style="max-width:560px">

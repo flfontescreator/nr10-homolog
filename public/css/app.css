@@ -691,9 +691,15 @@ table.grid tr:hover td {
 }
 
 /* Grid de Gestão de Documentos: nenhum conteúdo das células pode estender a
-   largura da tabela (células clipam; colunas fixas do colgroup). */
+   largura da tabela (células e cabeçalhos clipam; colunas fixas do colgroup). */
+table.grid.docs-grid th,
 table.grid.docs-grid td {
     overflow: hidden;
+}
+
+/* Cabeçalhos quebram dentro da coluna fixa em vez de serem cortados. */
+table.grid.docs-grid th {
+    white-space: normal;
 }
 
 .section-row td {

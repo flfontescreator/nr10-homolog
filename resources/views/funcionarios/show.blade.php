@@ -17,7 +17,7 @@
         </div>
         <div style="display:flex;gap:8px">
             @if($canWrite)
-                <a class="btn btn-secondary" href="{{ route('funcionarios.edit', $funcionario) }}">Editar</a>
+                <a class="btn btn-secondary" href="{{ request()->filled('from') ? route('funcionarios.edit', ['funcionario' => $funcionario, 'from' => request()->query('from')]) : route('funcionarios.edit', $funcionario) }}">Editar</a>
             @endif
             <a class="btn btn-secondary" href="{{ $backUrl ?? route('funcionarios.index') }}">← Voltar</a>
         </div>

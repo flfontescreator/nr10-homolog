@@ -32,17 +32,28 @@
                 </h2>
 
 <div class="table-wrap">
-                <table class="grid">
+                <table class="grid docs-grid" style="table-layout:fixed">
+                    <colgroup>
+                        <col style="width:7%">
+                        <col style="width:20%">
+                        <col style="width:10%">
+                        <col style="width:11%">
+                        <col style="width:10%">
+                        <col style="width:10%">
+                        <col style="width:14%">
+                        <col style="width:10%">
+                        <col style="width:8%">
+                    </colgroup>
                     <thead>
                         <tr>
                             <th>Código</th>
                             <th>Não conformidade</th>
-                            <th>Evidências</th>
-                            <th>Condição inicial</th>
-                            <th>Verificação</th>
-                            <th>Validade do documento</th>
-                            <th>Percentual</th>
                             <th>Arquivos</th>
+                            <th style="white-space:normal">Condição inicial</th>
+                            <th>Verificação</th>
+                            <th style="white-space:normal">Validade do documento</th>
+                            <th>Percentual</th>
+                            <th>Evidência</th>
                             <th class="text-right">Ação</th>
                         </tr>
                     </thead>
@@ -54,8 +65,8 @@
                                 @continue
                             @endif
                             <tr>
-                                <td><strong>{{ $child->code }}</strong></td>
-                                <td style="max-width:320px">{{ $child->title }}</td>
+                                <td><strong style="white-space:nowrap">{{ $child->code }}</strong></td>
+                                <td style="max-width:320px;overflow-wrap:anywhere;word-break:break-word">{{ $child->title }}</td>
                                 <td>
                                     @php($status = $row?->evidencias_status)
                                     @if($status)
@@ -66,14 +77,14 @@
                                         <span class="muted">—</span>
                                     @endif
                                 </td>
-                                <td>{{ $row?->condicao_inicial ?? '—' }}</td>
-                                <td>{{ $row?->data_realizacao?->format('d/m/Y') ?: '—' }}</td>
-                                <td>{{ $row?->data_validade?->format('d/m/Y') ?: '—' }}</td>
+                                <td style="overflow-wrap:anywhere;word-break:break-word">{{ $row?->condicao_inicial ?? '—' }}</td>
+                                <td style="white-space:nowrap">{{ $row?->data_realizacao?->format('d/m/Y') ?: '—' }}</td>
+                                <td style="white-space:nowrap">{{ $row?->data_validade?->format('d/m/Y') ?: '—' }}</td>
                                 <td>
                                     @if($row?->percentual !== null)
                                         <div style="display:flex;align-items:center;gap:8px">
-                                            <div class="progress" style="flex:1"><div class="progress-bar" style="width:{{ min($row->percentual, 100) }}%"></div></div>
-                                            <span class="small">{{ number_format($row->percentual, 0, ',', '.') }}%</span>
+                                            <div class="progress" style="flex:1;min-width:0"><div class="progress-bar" style="width:{{ min($row->percentual, 100) }}%"></div></div>
+                                            <span class="small" style="white-space:nowrap">{{ number_format($row->percentual, 0, ',', '.') }}%</span>
                                         </div>
                                     @else
                                         <span class="muted">—</span>
@@ -105,25 +116,33 @@
                                                     <span class="badge badge-neutral">{{ $funcionario->matricula }}</span>
                                                 @endif
                                                 <span class="badge badge-blue">Média {{ $media !== null ? number_format($media, 0, ',', '.') . '%' : '—' }}</span>
-                                                <a class="btn btn-sm btn-secondary" href="{{ route('funcionarios.show', $funcionario) }}">Abrir</a>
+                                                <a class="btn btn-sm btn-secondary" href="{{ route('funcionarios.show', ['funcionario' => $funcionario, 'from' => 'prontuario']) }}">Abrir</a>
                                             </div>
                                             <div class="table-wrap" style="margin-top:6px">
-                                                <table class="grid">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>Código</th>
-                                                            <th>Documento / não conformidade</th>
-                                                            <th>Evidências</th>
-                                                            <th>Status</th>
-                                                            <th>Percentual</th>
-                                                            <th class="text-right">Ação</th>
-                                                        </tr>
-                                                    </thead>
+                                                <table class="grid docs-grid" style="table-layout:fixed">
+                                                        <colgroup>
+                                                            <col style="width:9%">
+                                                            <col style="width:43%">
+                                                            <col style="width:10%">
+                                                            <col style="width:14%">
+                                                            <col style="width:12%">
+                                                            <col style="width:12%">
+                                                        </colgroup>
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Código</th>
+<th style="white-space:normal">Documento / não conformidade</th>
+                                                                <th>Evidências</th>
+                                                                <th>Status</th>
+                                                                <th>Percentual</th>
+                                                                <th class="text-right">Ação</th>
+                                                            </tr>
+                                                        </thead>
                                                     <tbody>
                                                         @forelse($funcionario->prontuarioItems as $funcItem)
                                                             <tr>
                                                                 <td><strong>{{ $funcItem->catalogItem?->code }}</strong></td>
-                                                                <td style="max-width:340px">{{ $funcItem->catalogItem?->title }}</td>
+                                                                <td style="max-width:340px;overflow-wrap:anywhere;word-break:break-word">{{ $funcItem->catalogItem?->title }}</td>
                                                                 <td>
                                                                     <span class="badge {{ $funcItem->evidences_count > 0 ? 'badge-green' : 'badge-neutral' }}">
                                                                         {{ $funcItem->evidences_count }}
@@ -165,7 +184,7 @@
                                     <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
                                         <span class="badge badge-blue">{{ $funcionariosTotal }}</span>
                                         <span>funcionário(s) com item 4 (4.1 a 4.8) do prontuário.</span>
-                                        <a href="{{ route('funcionarios.create') }}">Cadastrar funcionário</a>
+                                        <a href="{{ route('funcionarios.create', ['from' => 'prontuario']) }}">Cadastrar funcionário</a>
                                     </div>
                                 </td>
                             </tr>
