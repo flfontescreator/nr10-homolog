@@ -8,11 +8,13 @@ use App\Enums\Role;
 use App\Mail\RncMail;
 use App\Models\ClassificacaoRisco;
 use App\Models\Evidence;
+use App\Models\NormaTecnica;
 use App\Models\Rnc;
 use App\Models\RncItem;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Support\Rnc\RncPublicationService;
+use Database\Seeders\RncCatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -769,6 +771,73 @@ class RncModuleTest extends TestCase
     private function publicationPendente(Rnc $rnc): bool
     {
         return app(RncPublicationService::class)->hasPendingChanges($rnc->fresh());
+    }
+
+    public function test_seeder_popula_os_itens_da_nbr_5410(): void
+    {
+        $seeder = new RncCatalogSeeder;
+
+        $seeder->run();
+        $seeder->run();
+
+        $nbr = NormaTecnica::where('codigo', 'NBR 5410')->firstOrFail();
+
+        $this->assertSame(163, $nbr->itens()->count(), 'O CSV de seed traz 163 itens e a reexecução é idempotente.');
+        $this->assertSame('Proteção contra choques elétricos', $nbr->itens()->where('codigo', '5.1')->value('descricao'));
+        $this->assertTrue($nbr->itens()->where('codigo', '6.4.1')->exists());
+    }
+
+    public function test_formulario_lista_somente_as_normas_com_itens(): void
+    {
+        (new RncCatalogSeeder)->run();
+
+        $tenant = $this->makeTenant();
+        $user = User::factory()->create(['role' => Role::Manager, 'tenant_id' => $tenant->id]);
+        $rnc = $this->makeRnc($tenant);
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->get(route('rnc.show', $rnc))
+            ->assertOk()
+            ->assertSee('NBR 5410')
+            ->assertSee('"codigo":"6.4.1"', false)
+            ->assertDontSee('NBR 5419', false, 'Norma sem itens catalogados não entra no picker.');
+    }
+
+    public function test_relatorio_agrupa_as_referencias_por_norma(): void
+    {
+        Storage::fake('local');
+
+        (new RncCatalogSeeder)->run();
+
+        $tenant = $this->makeTenant();
+        $user = User::factory()->create(['role' => Role::Manager, 'tenant_id' => $tenant->id]);
+        $rnc = $this->makeRnc($tenant);
+        $item = $this->makeItem($rnc, 'NC 1');
+
+        $nr10 = NormaTecnica::where('codigo', 'NR-10')->firstOrFail();
+        $anterior = $nr10->itens()->create(['codigo' => '10.3.1', 'descricao' => 'Serviços com risco elétrico', 'ordem' => 2]);
+        $posterior = $nr10->itens()->create(['codigo' => '10.1.2', 'descricao' => 'Disposições gerais', 'ordem' => 1]);
+
+        $nbr5410 = NormaTecnica::where('codigo', 'NBR 5410')->firstOrFail();
+        $itemNbr = $nbr5410->itens()->where('codigo', '5.1')->firstOrFail();
+
+        // Anexados fora de ordem: o relatório ordena os códigos por valor natural.
+        $item->normaItens()->attach([$anterior->id, $itemNbr->id, $posterior->id]);
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->post(route('rnc.publish', $rnc))
+            ->assertRedirect();
+
+        $revisao = $rnc->revisions()->firstOrFail();
+
+        $this->assertStringContainsString('NR-10 Item(s): 10.1.2 10.3.1', $revisao->markdown);
+        $this->assertStringContainsString('NBR 5410 Item(s): 5.1', $revisao->markdown);
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->get(route('rnc.revision.print', [$rnc, $revisao]))
+            ->assertOk()
+            ->assertSee('NR-10 Item(s): 10.1.2 10.3.1')
+            ->assertSee('NBR 5410 Item(s): 5.1');
     }
 
     protected function makeTenant(): Tenant

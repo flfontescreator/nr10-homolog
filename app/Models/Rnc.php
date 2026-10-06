@@ -147,7 +147,7 @@ class Rnc extends Model
             'items.criticidade',
             'items.classificacaoRisco',
             'items.situacao',
-            'items.normaItens',
+            'items.normaItens.normaTecnica',
             'items.evidences',
         ]);
 
@@ -185,6 +185,7 @@ class Rnc extends Model
                         ->map(fn (NormaItem $normaItem) => [
                             'codigo' => $normaItem->codigo,
                             'descricao' => $normaItem->descricao,
+                            'norma' => $normaItem->normaTecnica?->codigo,
                         ])
                         ->all(),
                     'evidencias' => $item->evidences

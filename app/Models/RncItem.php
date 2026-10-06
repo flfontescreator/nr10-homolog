@@ -69,8 +69,12 @@ class RncItem extends Model
 
     public function normaItens(): BelongsToMany
     {
+        // Ordem estável no relatório: norma mais antiga primeiro (NR-10) e,
+        // dentro dela, a ordem do sumário.
         return $this->belongsToMany(NormaItem::class, 'rnc_item_norma_item', 'rnc_item_id', 'norma_item_id')
-            ->withTimestamps();
+            ->withTimestamps()
+            ->orderBy('norma_itens.norma_tecnica_id')
+            ->orderBy('norma_itens.ordem');
     }
 
     /**

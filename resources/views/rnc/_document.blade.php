@@ -30,6 +30,14 @@
         return null;
     };
 
+    // Logomarca GreenJob: embutida em base64 (PDF e HTML não dependem de URL).
+    $logoSrc = null;
+    $logoArquivo = public_path('img/logo-greenjob.png');
+
+    if (is_file($logoArquivo)) {
+        $logoSrc = 'data:image/png;base64,'.base64_encode((string) file_get_contents($logoArquivo));
+    }
+
     // Registros fotográficos: uma linha por evidência, numeradas em sequência.
     $fotos = [];
     $sequencia = 0;
@@ -66,7 +74,10 @@
     .doc table { width: 100%; border-collapse: collapse; margin-bottom: 2mm; }
     .doc th, .doc td { border: 1px solid #d5dbdf; padding: 1.8mm 2.2mm; text-align: left; vertical-align: top; font-size: 9pt; }
     .doc th { background: #f2f5f4; font-weight: bold; }
-    .doc .doc-banner { text-align: center; font-size: 12pt; font-weight: bold; letter-spacing: 1px; border-bottom: 2px solid #1b1f23; padding-bottom: 2mm; margin-bottom: 4mm; }
+    .doc .doc-topo { margin-bottom: 4mm; }
+    .doc .doc-logo { text-align: right; margin-bottom: 2.5mm; }
+    .doc .doc-logo img { height: 12mm; width: auto; }
+    .doc .doc-banner { text-align: center; font-size: 12pt; font-weight: bold; letter-spacing: 1px; border-bottom: 2px solid #1b1f23; padding-bottom: 2mm; }
 
     .doc .ident { display: table; width: 100%; margin-bottom: 3mm; }
     .doc .ident > div { display: table-cell; width: 33.33%; font-size: 9pt; padding-right: 3mm; }
@@ -81,6 +92,12 @@
     .doc .nc { page-break-inside: avoid; margin-bottom: 3mm; }
     .doc .referencias { margin: 0 0 2mm; }
     .doc .referencias span { display: inline-block; border: 1px solid #9aa7ad; border-radius: 3px; padding: .4mm 1.6mm; font-size: 8pt; margin: 0 1mm 1mm 0; }
+    .doc td .referencias { margin: 0; }
+    .doc table.evid-grid { border-collapse: separate; border-spacing: 2mm; margin-bottom: 2mm; }
+    .doc table.evid-grid td { border: 0; padding: 0; width: 33.33%; vertical-align: top; text-align: center; }
+    .doc table.evid-grid img { max-width: 100%; max-height: 52mm; }
+    .doc table.evid-grid .evid-desc { font-size: 8pt; color: #5b6b73; text-align: left; line-height: 1.3; margin-top: 1mm; }
+    .doc table.evid-grid .evid-vazia { text-align: left; }
     .doc table.fotos th { text-align: center; font-size: 8pt; text-transform: uppercase; }
     .doc table.fotos td.foto-num { width: 12mm; text-align: center; font-weight: bold; }
     .doc table.fotos td.foto-cel { width: 50%; text-align: center; }
@@ -91,7 +108,12 @@
 </style>
 
 <div class="doc">
-    <div class="doc-banner">RELATÓRIO DE NÃO CONFORMIDADE</div>
+    <div class="doc-topo">
+        @if($logoSrc)
+            <div class="doc-logo"><img src="{{ $logoSrc }}" alt="GreenJob"></div>
+        @endif
+        <div class="doc-banner">RELATÓRIO DE NÃO CONFORMIDADE</div>
+    </div>
 
     <div class="ident">
         <div>
@@ -180,17 +202,11 @@
                     @if(! empty($item['criticidade']))
                         <tr><th class="rotulo">Criticidade</th><td>{{ $item['criticidade'] }}</td></tr>
                     @endif
-                    @if(! empty($item['classificacao_risco']))
-                        <tr><th class="rotulo">Classificação de risco</th><td>{{ $item['classificacao_risco'] }}</td></tr>
-                    @endif
                     @if(! empty($item['situacao']))
                         <tr><th class="rotulo">Situação</th><td>{{ $item['situacao'] }}</td></tr>
                     @endif
                     @if(! empty($item['descricao']))
                         <tr><th class="rotulo">Descrição</th><td>{!! nl2br(e($item['descricao'])) !!}</td></tr>
-                    @endif
-                    @if(! empty($item['recomendacao']))
-                        <tr><th class="rotulo">Recomendação</th><td>{!! nl2br(e($item['recomendacao'])) !!}</td></tr>
                     @endif
                     @if(! empty($item['prazo_adequacao']))
                         <tr><th class="rotulo">Prazo de adequação</th><td>{{ $data($item['prazo_adequacao']) }}</td></tr>
@@ -198,36 +214,62 @@
                     @if(! empty($item['data_adequacao']))
                         <tr><th class="rotulo">Data de adequação</th><td>{{ $data($item['data_adequacao']) }}</td></tr>
                     @endif
+                    <tr>
+                        <th class="rotulo">Referências normativas</th>
+                        <td>
+                            <div class="referencias">
+                                @forelse($item['referencias'] ?? [] as $referencia)
+                                    <span>{{ $referencia['codigo'] }}</span>
+                                @empty
+                                    <span>-</span>
+                                @endforelse
+                            </div>
+                        </td>
+                    </tr>
                 </table>
 
-                <div class="referencias">
-                    @forelse($item['referencias'] ?? [] as $referencia)
-                        <span>{{ $referencia['codigo'] }}</span>
-                    @empty
-                        <span>-</span>
-                    @endforelse
-                </div>
-
                 @if(! empty($item['evidencias']))
-                    <table>
-                        @foreach($item['evidencias'] as $evidencia)
-                            @php($src = $imgSrc($evidencia))
+                    <table class="evid-grid">
+                        @foreach(array_chunk($item['evidencias'], 3) as $linha)
                             <tr>
-                                <td style="width:45%">
-                                    @if($src && str_starts_with((string) ($evidencia['mime'] ?? ''), 'image/'))
-                                        <img src="{{ $src }}" alt="" style="max-width:100%;max-height:45mm">
-                                    @else
-                                        {{ $evidencia['nome'] ?? '—' }}
-                                    @endif
-                                </td>
-                                <td>
-                                    {{ $evidencia['descricao'] ?? '' }}
-                                    @if(! empty($evidencia['validade']))
-                                        <span class="muted">— validade {{ $data($evidencia['validade']) }}</span>
-                                    @endif
-                                </td>
+                                @foreach($linha as $evidencia)
+                                    @php($src = $imgSrc($evidencia))
+                                    <td class="evid-cel">
+                                        @if($src && str_starts_with((string) ($evidencia['mime'] ?? ''), 'image/'))
+                                            <img src="{{ $src }}" alt="">
+                                        @else
+                                            <span class="muted">{{ $evidencia['nome'] ?? '—' }}</span>
+                                        @endif
+                                        @if(! empty($evidencia['descricao']) || ! empty($evidencia['validade']))
+                                            <div class="evid-desc">
+                                                {!! nl2br(e($evidencia['descricao'] ?? '')) !!}
+                                                @if(! empty($evidencia['validade']))
+                                                    <span class="muted">— validade {{ $data($evidencia['validade']) }}</span>
+                                                @endif
+                                            </div>
+                                        @endif
+                                    </td>
+                                @endforeach
+                                @for($coluna = count($linha); $coluna < 3; $coluna++)
+                                    <td class="evid-cel evid-vazia"></td>
+                                @endfor
                             </tr>
                         @endforeach
+                    </table>
+                @endif
+
+                @php($referenciasAbaixo = \App\Support\Rnc\ReferenciasNormativas::texto($item['referencias'] ?? []))
+                @if(! empty($item['recomendacao']) || ! empty($item['classificacao_risco']) || $referenciasAbaixo)
+                    <table>
+                        @if(! empty($item['recomendacao']))
+                            <tr><th class="rotulo">Recomendação</th><td>{!! nl2br(e($item['recomendacao'])) !!}</td></tr>
+                        @endif
+                        @if(! empty($item['classificacao_risco']))
+                            <tr><th class="rotulo">Classificação de risco</th><td>{{ $item['classificacao_risco'] }}</td></tr>
+                        @endif
+                        @if($referenciasAbaixo)
+                            <tr><th class="rotulo">Referências normativas</th><td>{!! nl2br(e($referenciasAbaixo)) !!}</td></tr>
+                        @endif
                     </table>
                 @endif
             </div>

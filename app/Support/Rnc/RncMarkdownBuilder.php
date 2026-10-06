@@ -69,13 +69,9 @@ class RncMarkdownBuilder
             ]));
             $lines[] = '';
 
-            $referencias = collect($item['referencias'] ?? [])
-                ->map(fn ($ref) => trim((string) ($ref['codigo'] ?? '')))
-                ->filter()
-                ->values()
-                ->all();
+            $referencias = str_replace("\n", '; ', ReferenciasNormativas::texto($item['referencias'] ?? []) ?? '');
 
-            $lines[] = '**Referências normativas:** '.($referencias === [] ? '-' : implode(', ', $referencias));
+            $lines[] = '**Referências normativas:** '.($referencias !== '' ? $referencias : '-');
             $lines[] = '';
 
             if (! empty($item['evidencias'])) {

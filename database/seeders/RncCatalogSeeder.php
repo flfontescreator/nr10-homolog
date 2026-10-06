@@ -20,6 +20,7 @@ class RncCatalogSeeder extends Seeder
         $this->seedClassificacoesRisco();
         $this->seedNormas();
         $this->seedNormaItens();
+        $this->seedNormaItensNbr5410();
     }
 
     protected function seedProjetos(): void
@@ -118,6 +119,43 @@ class RncCatalogSeeder extends Seeder
                     'descricao' => trim(preg_replace('/\s+/u', ' ', $m[2]) ?? ''),
                     'ordem' => $ordem,
                 ]
+            );
+        }
+    }
+
+    /**
+     * Itens da ABNT NBR 5410 vêm do CSV versionado em database/seeders/data/
+     * nbr5410.csv (colunas codigo,titulo): sumário das cláusulas 1..9 em até 3
+     * níveis. Idempotente — reexecutar só atualiza descrição/ordem.
+     */
+    protected function seedNormaItensNbr5410(): void
+    {
+        $nbr = NormaTecnica::where('codigo', 'NBR 5410')->first();
+        $arquivo = database_path('seeders/data/nbr5410.csv');
+
+        if ($nbr === null || ! is_file($arquivo)) {
+            return;
+        }
+
+        $ordem = 0;
+
+        foreach (CatalogSeeder::csvRows($arquivo) as $linha) {
+            $codigo = trim((string) ($linha[0] ?? ''));
+            $titulo = trim(preg_replace('/\s+/u', ' ', (string) ($linha[1] ?? '')) ?? '');
+
+            if ($codigo === 'codigo') {
+                continue;
+            }
+
+            if ($codigo === '' || $titulo === '') {
+                continue;
+            }
+
+            $ordem++;
+
+            NormaItem::updateOrCreate(
+                ['norma_tecnica_id' => $nbr->id, 'codigo' => $codigo],
+                ['descricao' => $titulo, 'ordem' => $ordem]
             );
         }
     }

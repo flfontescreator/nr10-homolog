@@ -716,16 +716,17 @@ class RncController extends Controller
     }
 
     /**
-     * O campo "Referências normativas" é exclusivo da NR-10: é a única norma
-     * com itens (vêm da matriz do cronograma). As demais normas do catálogo
-     * não entram aqui.
+     * O campo "Referências normativas" lista só as normas que têm itens
+     * catalogados (ex.: NR-10, da matriz do cronograma, e ABNT NBR 5410, do
+     * CSV de seed). As demais normas do catálogo ficam de fora.
      *
      * @return Collection<int, NormaTecnica>
      */
     protected function normasComItens()
     {
         return NormaTecnica::query()
-            ->where('codigo', 'NR-10')
+            ->whereHas('itens')
+            ->orderBy('id')
             ->with(['itens' => fn ($q) => $q->orderBy('ordem')->orderBy('codigo')])
             ->get();
     }
