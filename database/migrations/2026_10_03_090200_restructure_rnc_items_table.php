@@ -17,9 +17,21 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('rnc_items', function (Blueprint $table) {
-            if (Schema::hasIndex('rnc_items', ['tenant_id', 'status'])) {
-                $table->dropIndex(['tenant_id', 'status']);
+            if (! Schema::hasIndex('rnc_items', ['tenant_id', 'status'])) {
+                return;
             }
+
+            // O MySQL pode estar usando o índice composto para sustentar a FK de
+            // `tenant_id` (não cria índice próprio quando já existe um prefixo);
+            // nesse caso um índice dedicado em `tenant_id` libera o drop.
+            $fkEmTenantId = collect(Schema::getForeignKeys('rnc_items'))
+                ->contains(fn (array $foreignKey) => ($foreignKey['columns'] ?? []) === ['tenant_id']);
+
+            if ($fkEmTenantId && ! Schema::hasIndex('rnc_items', ['tenant_id'])) {
+                $table->index(['tenant_id']);
+            }
+
+            $table->dropIndex(['tenant_id', 'status']);
         });
 
         Schema::table('rnc_items', function (Blueprint $table) {
