@@ -177,24 +177,3 @@ Route::middleware(['auth', '2fa'])->group(function () {
     Route::put('usuarios/{user}/reset-link', [UsuarioController::class, 'sendResetLink'])->name('usuarios.reset-link');
     Route::delete('usuarios/{user}', [UsuarioController::class, 'destroy'])->name('usuarios.destroy');
 });
-
-use Illuminate\Support\Facades\Artisan;
-
-// ROTA TEMPORÁRIA: Executar migrations e limpar cache
-Route::get('/run-artisan-migrate-homolog', function () {
-    try {
-        // Executa as migrations no banco com --force
-        Artisan::call('migrate', ['--force' => true]);
-        $outputMigrate = Artisan::output();
-
-        // Opcional: limpa caches do Laravel para garantir que reconheça as novidades
-        Artisan::call('optimize:clear');
-        $outputOptimize = Artisan::output();
-
-        return '<h1>✅ Migrations executadas com sucesso!</h1><pre>' 
-            . $outputMigrate . "\n" . $outputOptimize 
-            . '</pre>';
-    } catch (\Exception $e) {
-        return '<h1>❌ Erro ao executar migrations:</h1><pre>' . $e->getMessage() . '</pre>';
-    }
-});
