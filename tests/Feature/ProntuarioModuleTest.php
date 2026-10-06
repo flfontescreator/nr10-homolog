@@ -51,6 +51,7 @@ class ProntuarioModuleTest extends TestCase
             ->get(route('prontuario.show', $this->item))
             ->assertOk()
             ->assertSee('name="data_validade"', false)
+            ->assertSee('name="validade_aplica"', false)
             ->assertSee('type="date"', false);
     }
 
@@ -58,11 +59,41 @@ class ProntuarioModuleTest extends TestCase
     {
         $this->actingAsManager()
             ->put(route('prontuario.update', $this->item), [
+                'validade_aplica' => 1,
                 'data_validade' => '2026-12-31',
             ])
             ->assertSessionHas('success');
 
-        $this->assertSame('2026-12-31', $this->item->fresh()->data_validade?->format('Y-m-d'));
+        $item = $this->item->fresh();
+        $this->assertTrue($item->validade_aplica);
+        $this->assertSame('2026-12-31', $item->data_validade?->format('Y-m-d'));
+    }
+
+    public function test_validade_aplica_requires_a_date(): void
+    {
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'validade_aplica' => 1,
+                'data_validade' => '',
+            ])
+            ->assertSessionHasErrors('data_validade');
+
+        $this->assertNull($this->item->fresh()->data_validade);
+    }
+
+    public function test_unchecking_validade_aplica_clears_the_date(): void
+    {
+        $this->item->update(['validade_aplica' => true, 'data_validade' => '2026-12-31']);
+
+        $this->actingAsManager()
+            ->put(route('prontuario.update', $this->item), [
+                'data_validade' => '2026-12-31',
+            ])
+            ->assertSessionHas('success');
+
+        $item = $this->item->fresh();
+        $this->assertFalse($item->validade_aplica);
+        $this->assertNull($item->data_validade);
     }
 
     public function test_empty_data_validade_clears_the_field(): void

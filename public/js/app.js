@@ -80,23 +80,62 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // ---------- Busca de CNPJ (BrasilAPI) ----------
+    // ---------- Cadastro de cliente: busca de CNPJ (BrasilAPI) ----------
+    var loadCidades = null;
+    var loadBairros = null;
+
+    var digitsOnly = function (value) {
+        return (value || '').replace(/\D/g, '');
+    };
+
+    var formatCep = function (value) {
+        var digits = digitsOnly(value);
+        return digits.length === 8 ? digits.slice(0, 5) + '-' + digits.slice(5) : value;
+    };
+
+    var setAddressField = function (id, value) {
+        var field = document.getElementById(id);
+        if (field && value) {
+            field.value = value;
+        }
+    };
+
+    // Preenche o endereço do cliente a partir da Receita/ViaCEP: no cadastro
+    // novo os campos são separados; sem eles, cai na string única antiga.
+    var fillEndereco = function (data) {
+        if (document.getElementById('numero')) {
+            setAddressField('address', data.logradouro || '');
+            setAddressField('numero', data.numero || '');
+            setAddressField('complemento', data.complemento || '');
+            setAddressField('bairro', data.bairro || '');
+            setAddressField('cidade', data.municipio || '');
+            setAddressField('uf', data.uf || '');
+            setAddressField('cep', data.cep ? formatCep(data.cep) : '');
+        } else {
+            setAddressField('address', [
+                data.logradouro,
+                data.numero,
+                data.bairro,
+                data.municipio,
+                data.uf
+            ].filter(Boolean).join(', '));
+        }
+
+        if (typeof loadCidades === 'function') loadCidades();
+        if (typeof loadBairros === 'function') loadBairros();
+    };
+
     var cnpjInput = document.getElementById('cnpj');
     var buscarBtn = document.getElementById('btn-buscar-cnpj');
 
     if (cnpjInput && buscarBtn) {
         var status = document.getElementById('cnpj-status');
         var nameInput = document.getElementById('name');
-        var addressInput = document.getElementById('address');
 
         var setStatus = function (message, isError) {
             if (!status) return;
             status.textContent = message || '';
             status.style.color = isError ? 'var(--danger)' : 'var(--muted)';
-        };
-
-        var digitsOnly = function (value) {
-            return (value || '').replace(/\D/g, '');
         };
 
         buscarBtn.addEventListener('click', function () {
@@ -120,21 +159,145 @@ document.addEventListener('DOMContentLoaded', function () {
                     if (nameInput) {
                         nameInput.value = data.razao_social || '';
                     }
-                    if (addressInput) {
-                        addressInput.value = [
-                            data.logradouro,
-                            data.numero,
-                            data.bairro,
-                            data.municipio,
-                            data.uf
-                        ].filter(Boolean).join(', ');
-                    }
+                    fillEndereco(data);
                     setStatus('Dados do CNPJ preenchidos.');
                 })
                 .catch(function (error) {
                     setStatus(error.message || 'Falha ao consultar o CNPJ.', true);
                 });
         });
+    }
+
+    // ---------- Cadastro de cliente: busca de CEP (ViaCEP) e autocompletar ----------
+    var enderecoForm = document.querySelector('form[data-cep-url]');
+
+    if (enderecoForm) {
+        var cepInput = document.getElementById('cep');
+        var buscarCepBtn = document.getElementById('btn-buscar-cep');
+        var cepStatus = document.getElementById('cep-status');
+        var ufSelect = document.getElementById('uf');
+        var cidadeInput = document.getElementById('cidade');
+        var bairroInput = document.getElementById('bairro');
+        var cidadesList = document.getElementById('cidades-lista');
+        var bairrosList = document.getElementById('bairros-lista');
+
+        var setCepStatus = function (message, isError) {
+            if (!cepStatus) return;
+            cepStatus.textContent = message || '';
+            cepStatus.style.color = isError ? 'var(--danger)' : 'var(--muted)';
+        };
+
+        var fillDatalist = function (list, nomes) {
+            if (!list) return;
+            list.textContent = '';
+            (nomes || []).forEach(function (nome) {
+                var option = document.createElement('option');
+                option.value = nome;
+                list.appendChild(option);
+            });
+        };
+
+        loadCidades = function () {
+            var uf = ufSelect ? ufSelect.value : '';
+
+            if (!uf) {
+                fillDatalist(cidadesList, []);
+                return;
+            }
+
+            fetch(enderecoForm.dataset.cidadesUrl + '?uf=' + encodeURIComponent(uf))
+                .then(function (response) { return response.json(); })
+                .then(function (nomes) { fillDatalist(cidadesList, nomes); })
+                .catch(function () { fillDatalist(cidadesList, []); });
+        };
+
+        loadBairros = function () {
+            var uf = ufSelect ? ufSelect.value : '';
+            var cidade = cidadeInput ? cidadeInput.value.trim() : '';
+
+            if (!uf || !cidade) {
+                fillDatalist(bairrosList, []);
+                return;
+            }
+
+            fetch(enderecoForm.dataset.bairrosUrl
+                    + '?uf=' + encodeURIComponent(uf)
+                    + '&cidade=' + encodeURIComponent(cidade))
+                .then(function (response) { return response.json(); })
+                .then(function (nomes) { fillDatalist(bairrosList, nomes); })
+                .catch(function () { fillDatalist(bairrosList, []); });
+        };
+
+        if (ufSelect) {
+            ufSelect.addEventListener('change', function () {
+                if (cidadeInput) cidadeInput.value = '';
+                if (bairroInput) bairroInput.value = '';
+                fillDatalist(bairrosList, []);
+                loadCidades();
+            });
+        }
+
+        if (cidadeInput) {
+            cidadeInput.addEventListener('change', function () {
+                if (bairroInput) bairroInput.value = '';
+                loadBairros();
+            });
+        }
+
+        if (bairroInput) {
+            bairroInput.addEventListener('focus', loadBairros);
+        }
+
+        if (cepInput && buscarCepBtn) {
+            var buscarCep = function () {
+                var cep = digitsOnly(cepInput.value);
+
+                if (cep.length !== 8) {
+                    setCepStatus('Digite um CEP válido com 8 dígitos.', true);
+                    return;
+                }
+
+                setCepStatus('Consultando CEP…');
+
+                fetch(enderecoForm.dataset.cepUrl.replace('__CEP__', cep))
+                    .then(function (response) {
+                        return response.json()
+                            .catch(function () { return {}; })
+                            .then(function (body) {
+                                if (!response.ok) {
+                                    throw new Error(body.message || 'CEP não encontrado.');
+                                }
+                                return body;
+                            });
+                    })
+                    .then(function (data) {
+                        cepInput.value = data.cep || cepInput.value;
+                        setAddressField('address', data.address || '');
+                        setAddressField('bairro', data.bairro || '');
+                        setAddressField('cidade', data.cidade || '');
+                        setAddressField('uf', data.uf || '');
+                        loadCidades();
+                        loadBairros();
+                        setCepStatus('Endereço preenchido.');
+                    })
+                    .catch(function (error) {
+                        setCepStatus(error.message || 'Falha ao consultar o CEP.', true);
+                    });
+            };
+
+            buscarCepBtn.addEventListener('click', buscarCep);
+
+            cepInput.addEventListener('keydown', function (event) {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    buscarCep();
+                }
+            });
+        }
+
+        // Listas já na abertura, quando o cliente já tem endereço cadastrado.
+        loadCidades();
+        loadBairros();
     }
 
     // ---------- Picker de setores (multiplicar setores do cronograma) ----------

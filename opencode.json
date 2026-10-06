@@ -1,5 +1,11 @@
 {
     "$schema": "https://opencode.ai/config.json",
+    "references": {
+        "regras": {
+            "path": ".ai/rules",
+            "description": "Regras do projeto: ler obrigatoriamente antes de editar qualquer arquivo"
+        }
+    },
     "mcp": {
         "laravel-boost": {
             "type": "local",

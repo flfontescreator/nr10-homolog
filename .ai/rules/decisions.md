@@ -191,3 +191,88 @@ migration `2026_09_29_194520`, `storage/app/imports/matriz_nr10_2026.csv`,
   de autorização, junto com migrate + re-seed + scp do CSV).
 - Cobertura: `CatalogMatrizSyncTest` (7 casos: criação de itens/seções, preenchimento,
   convergência de textos, reclassificação, preservação de edições, idempotência).
+
+## Fase 11 — Funcionário standalone + exclusão definitiva
+
+### Funcionário standalone (definitivo)
+- `funcionarios` não tem mais vínculo com catálogo/4.x: os itens são
+  `funcionario_items` numeração PRÓPRIA em sequência (1, 2, 3…), criados pelo usuário.
+  Legado 4.x removido por `2026_10_01_070400` (que também remove `catalog_items.n1=4`).
+- Migration `2026_10_01_080000_add_deactivation_fields_to_funcionarios_table` criou
+  `funcionarios.{ativo, desativado_*, reativado_*, reativacao_expira_em}` e DROPA
+  `funcionario_items.{validade_aplica, data_validade}` (validade migrou para a
+  evidência). As colunas `ativo`/`desativado_*`/`reativado_*` ficaram **sem uso** —
+  desativar/reativar foi removido por completo (rotas, `authorizeActive`/`authorizeManage`,
+  comando `funcionarios:expira-reativacoes` e o agendamento em `routes/console.php`).
+  Manter a migration: as colunas continuam no banco.
+
+### Situação do funcionário (cadastro — só exibição)
+- `funcionario_situacoes` (`2026_10_02_142759` + seed e
+  `2026_10_02_142810_add_admissao_e_situacao`) guarda o Ativo/Inativo cadastral.
+- A Situação **não é escolhida na tela** (create/edit escondem o campo): `store` grava
+  sempre `FuncionarioSituacao::default()` (Ativo); `update` **não sobrescreve**. Ajuste
+  pontual só via banco.
+- Badge de Situação vem de `$funcionario->situacao` (`isInativo()` → `.badge-neutral`;
+  senão `.badge-blue`; `null` → `-`). Não reintroduzir o filtro `?situacao`: a listagem
+  mostra todos.
+
+### Validade da evidência é universal (checkbox "Se aplica")
+- A validade pertence ao **arquivo anexado**, não ao item: `partials/evidences`
+  tem o checkbox **Se aplica** (desmarcado por padrão) que habilita/desabilita o
+  campo data; marcado exige data, desmarcado grava `null`.
+- Regra única em `EvidenciaUploadService::resolveValidade($request)` — TODOS os
+  módulos de upload usam (Prontuário, Cronograma, Checklist/RNC, Funcionário).
+  Não reintroduzir `$request->input('validade')` direto nos controllers.
+- Trap de teste: sem `validade_aplica => 1` a validade é SEMPRE `null`, mesmo que
+  a data seja enviada.
+
+### Nomenclatura do arquivo anexado
+- `EvidenciaUploadService::storedFilename()` gera
+  `{img|doc}_{módulo}_{ddmmaaaa}_{sequencial de 9 dígitos}.{ext}`:
+  `img_fun_01102026_000000001.png`, `doc_prt_01102026_000000001.pdf`.
+- O `sequencial` é GLOBAL por categoria (uma para imagens, outra para
+  documentos/PDF), em `evidence_sequences` via `EvidenceSequence::proximo()`
+  (transação + `lockForUpdate`) — não é diário nem por módulo/cliente.
+- Prefixos: `rnc` (RNC e documentos de NC), `fun` (Funcionários),
+  `crn` (Cronograma), `prt` (Prontuário) — constantes `MODULO_*`. O prefixo é o
+  da TELA do upload: no `CronogramaController` em contexto de documento
+  (`?from=document`) é `rnc`, no plano é `crn`.
+- `storeForTenantItem()`/`storeForFuncionarioItem()` usam `storeAs` (não `store`);
+  não voltar a chamar `UploadedFile::store()` direto nos controllers.
+- `original_name` guarda o nome GERADO; o nome enviado pelo usuário é
+  descartado. Anexos já gravados mantêm o nome antigo (sem migração).
+
+> A regra completa e vigente está em `architecture.md` → **Anexos (evidências)**.
+
+### Exclusão definitiva de funcionário e item (produção, sem rótulo "teste")
+- **Funcionário**: `DELETE funcionarios/{funcionario}` (`FuncionarioController::destroy`),
+  liberado para Gestor/Admin/SuperAdmin (`canHardDelete()` = `User::canWrite()`); o
+  Visualizador não vê o botão. Apaga o funcionário e seus itens, mas **preserva as
+  evidências**: faz `evidences()->update(['funcionario_item_id' => null])` antes de
+  deletar (a FK é `cascadeOnDelete`, então NÃO confiar só no banco).
+- **Item do funcionário**: `DELETE .../itens/{item}` idem — desvincula e preserva.
+- Sem gate de ambiente: funciona igual em produção. Não existe mais
+  `abort_unless(app()->environment('local', 'testing'), 404)` nesses endpoints, e os
+  botões não têm mais o rótulo "(teste)".
+
+### Exclusão de evidência é sempre permitida
+- `DocumentoController::destroy` NÃO bloqueia mais evidência presa a DN finalizado
+  (`linkedToFinalizedDocument()`) nem a RNC publicado (`linkedToPublishedRnc()` /
+  `RncItem::lockedByPublication()`). `RncController::destroyItemEvidence` perdeu o
+  `abort_if(..., 409)`. A autorização segue: `canDeleteEvidence()`
+  (SuperAdmin/Admin/Manager) + tenant.
+- `CronogramaController::destroyEvidenceLink()` segue com `linkedToFinalizedDocument()`
+  — não foi destravado.
+
+### ⚠️ EXCEÇÃO TEMPORÁRIA remanescente — HARD DELETE DE DOCUMENTO RNC (REVERTER)
+Só o **documento de NC** continua restrito a `local`/`testing`:
+- Rota `DELETE nc-documents/{document}` (`NcDocumentController::destroy`) + botões
+  "Excluir (teste)" em `nc-documents/show` e `checklist/index`.
+- Guarda `abort_unless(app()->environment('local', 'testing'), 404)` — o gate é do
+  **endpoint**, não só da view: esconder o botão não fecha a rota.
+
+**CHECKLIST DE REMOÇÃO (obrigatório antes de qualquer deploy):**
+- [ ] Remover `NcDocumentController::destroy()` + rota `nc-documents.destroy`.
+- [ ] Remover os botões "Excluir (teste)" de `nc-documents/show` e `checklist/index`.
+- [ ] Remover/inverter os testes de hard delete de documento NC.
+- [ ] Confirmar `php artisan test --compact` verde + Pint limpo.

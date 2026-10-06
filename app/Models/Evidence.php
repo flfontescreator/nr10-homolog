@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\DocumentStatus;
+use App\Enums\Source;
 use App\Models\Concerns\BelongsToTenant;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -18,13 +19,37 @@ class Evidence extends Model
     protected $fillable = [
         'tenant_id',
         'tenant_item_id',
+        'funcionario_item_id',
+        'rnc_item_id',
         'uploaded_by',
         'original_name',
+        'description',
+        'validade',
         'stored_path',
         'disk',
         'mime_type',
         'size_bytes',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'validade' => 'date',
+        ];
+    }
+
+    /**
+     * Dias que faltam para a validade vencer. Negativo quando já venceu, null
+     * quando o arquivo não tem validade (nem todo documento tem).
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if (! $this->validade) {
+            return null;
+        }
+
+        return (int) now()->startOfDay()->diffInDays($this->validade->startOfDay(), false);
+    }
 
     public function tenant(): BelongsTo
     {
@@ -34,6 +59,24 @@ class Evidence extends Model
     public function tenantItem(): BelongsTo
     {
         return $this->belongsTo(TenantItem::class);
+    }
+
+    /**
+     * Item de documentation do Funcionário (módulo próprio). Exatamente uma das
+     * âncoras — tenantItem ou funcionarioItem — está preenchida.
+     */
+    public function funcionarioItem(): BelongsTo
+    {
+        return $this->belongsTo(FuncionarioItem::class);
+    }
+
+    /**
+     * Item do RNC (módulo próprio e independente de Não Conformidades). É a
+     * terceira âncora possível; exatamente uma das três fica preenchida.
+     */
+    public function rncItem(): BelongsTo
+    {
+        return $this->belongsTo(RncItem::class);
     }
 
     /**
@@ -89,6 +132,16 @@ class Evidence extends Model
     }
 
     /**
+     * Evidência ancorada em um RNC já publicado também não pode ser removida:
+     * a revisão oficial é imutável e o PDF publicado ao cliente já cita o
+     * arquivo. Mesma regra de `RncItem::lockedByPublication()`.
+     */
+    public function linkedToPublishedRnc(): bool
+    {
+        return (bool) $this->rncItem?->lockedByPublication();
+    }
+
+    /**
      * O arquivo ainda tem algum vínculo (badge de DN, sub-item de documento ou
      * sub-item do plano)? Quando falso após um desvínculo, o arquivo pode ser
      * apagado (órfão) sem risco.
@@ -116,6 +169,47 @@ class Evidence extends Model
             ->filter()
             ->unique('id')
             ->values();
+    }
+
+    /**
+     * Módulo de origem do arquivo, para a coluna "Módulo" da Gestão de
+     * Documentos. Itens de funcionário pertencem ao módulo Funcionários e os itens
+     * de RNC ao módulo RNC.
+     */
+    public function modulo(): string
+    {
+        if ($this->rnc_item_id !== null) {
+            return 'rnc';
+        }
+
+        if ($this->funcionario_item_id !== null) {
+            return 'funcionarios';
+        }
+
+        $source = $this->tenantItem?->catalogItem?->source?->value;
+
+        return $source === Source::Prontuario->value ? 'prontuario' : (string) $source;
+    }
+
+    /**
+     * Rótulos dos itens relacionados, cobrindo catálogo, itens de funcionário e
+     * itens de RNC.
+     */
+    public function relatedItemLabels(): Collection
+    {
+        if ($this->rnc_item_id !== null) {
+            return collect()
+                ->merge([$this->rncItem?->titulo])
+                ->filter();
+        }
+
+        if ($this->funcionario_item_id !== null) {
+            return collect()
+                ->merge([$this->funcionarioItem?->getDisplayLabelAttribute()])
+                ->filter();
+        }
+
+        return $this->relatedItems()->map(fn ($item) => $item->code);
     }
 
     public function uploader(): BelongsTo

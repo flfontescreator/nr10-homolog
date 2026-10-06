@@ -13,6 +13,8 @@ use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\NcDocumentController;
 use App\Http\Controllers\ProntuarioCatalogController;
 use App\Http\Controllers\ProntuarioController;
+use App\Http\Controllers\RncCatalogoController;
+use App\Http\Controllers\RncController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\TwoStepController;
 use App\Http\Controllers\UsuarioController;
@@ -33,6 +35,10 @@ Route::middleware('guest')->group(function () {
 Route::post('logout', [LoginController::class, 'destroy'])
     ->middleware('auth')
     ->name('logout');
+
+// ---- Link público do RNC (sem autenticação: token + validade de 7 dias) ----
+Route::get('rnc/public/{token}', [RncController::class, 'publicShow'])->name('rnc.public.show');
+Route::get('rnc/public/{token}/pdf', [RncController::class, 'publicPdf'])->name('rnc.public.pdf');
 
 // ---- Verificação em 2 etapas (usuário autenticado, antes do resto da área) ----
 Route::middleware('auth')->group(function () {
@@ -81,9 +87,12 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('funcionarios/{funcionario}/editar', [FuncionarioController::class, 'edit'])->name('funcionarios.edit');
         Route::put('funcionarios/{funcionario}', [FuncionarioController::class, 'update'])->name('funcionarios.update');
         Route::delete('funcionarios/{funcionario}', [FuncionarioController::class, 'destroy'])->name('funcionarios.destroy');
-        Route::post('funcionarios/{funcionario}/subitens', [FuncionarioController::class, 'storeSubItem'])->name('funcionarios.subitems.store');
-        Route::put('funcionarios/{funcionario}/subitens/{item}', [FuncionarioController::class, 'updateSubItem'])->name('funcionarios.subitems.update');
-        Route::delete('funcionarios/{funcionario}/subitens/{item}', [FuncionarioController::class, 'destroySubItem'])->name('funcionarios.subitems.destroy');
+        Route::post('funcionarios/{funcionario}/itens', [FuncionarioController::class, 'storeItem'])->name('funcionarios.items.store');
+        Route::get('funcionarios/{funcionario}/itens/{item}', [FuncionarioController::class, 'showItem'])->name('funcionarios.item.show');
+        Route::put('funcionarios/{funcionario}/itens/{item}', [FuncionarioController::class, 'updateItem'])->name('funcionarios.item.update');
+        Route::delete('funcionarios/{funcionario}/itens/{item}', [FuncionarioController::class, 'destroyItem'])->name('funcionarios.items.destroy');
+        Route::post('funcionarios/{funcionario}/itens/{item}/evidencias', [FuncionarioController::class, 'uploadItemEvidence'])->name('funcionarios.item.evidencia.upload');
+        Route::delete('funcionarios/{funcionario}/itens/{item}/evidencias/{evidence}', [FuncionarioController::class, 'destroyItemEvidence'])->name('funcionarios.item.evidencia.destroy');
 
         Route::get('checklist', [ChecklistController::class, 'index'])->name('checklist.index');
         Route::get('checklist/{item}', [ChecklistController::class, 'show'])->name('checklist.show');
@@ -108,6 +117,42 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('documentos/{evidence}/download', [DocumentoController::class, 'download'])->name('documentos.download');
         Route::get('documentos/{evidence}/preview', [DocumentoController::class, 'preview'])->name('documentos.preview');
         Route::delete('documentos/{evidence}', [DocumentoController::class, 'destroy'])->name('documentos.destroy');
+
+        // ---- RNC (Relatório Formal de Não Conformidade) — módulo NOVO, independente de Não Conformidades
+        Route::get('rnc', [RncController::class, 'index'])->name('rnc.index');
+        Route::get('rnc/novo', [RncController::class, 'create'])->name('rnc.create');
+        Route::post('rnc', [RncController::class, 'store'])->name('rnc.store');
+        Route::get('rnc/{rnc}', [RncController::class, 'show'])->whereNumber('rnc')->name('rnc.show');
+        Route::get('rnc/{rnc}/editar', [RncController::class, 'edit'])->whereNumber('rnc')->name('rnc.edit');
+        Route::put('rnc/{rnc}', [RncController::class, 'update'])->whereNumber('rnc')->name('rnc.update');
+        Route::delete('rnc/{rnc}', [RncController::class, 'destroy'])->whereNumber('rnc')->name('rnc.destroy');
+
+        Route::post('rnc/{rnc}/itens', [RncController::class, 'storeItem'])->whereNumber('rnc')->name('rnc.item.store');
+        Route::put('rnc/{rnc}/itens/{item}', [RncController::class, 'updateItem'])->whereNumber(['rnc', 'item'])->name('rnc.item.update');
+        Route::delete('rnc/{rnc}/itens/{item}', [RncController::class, 'destroyItem'])->whereNumber(['rnc', 'item'])->name('rnc.item.destroy');
+
+        Route::post('rnc/{rnc}/itens/{item}/evidencias', [RncController::class, 'uploadItemEvidence'])->whereNumber(['rnc', 'item'])->name('rnc.item.evidencia.upload');
+        Route::delete('rnc/{rnc}/itens/{item}/evidencias/{evidence}', [RncController::class, 'destroyItemEvidence'])->whereNumber(['rnc', 'item', 'evidence'])->name('rnc.item.evidencia.destroy');
+
+        Route::post('rnc/{rnc}/publicar', [RncController::class, 'publish'])->whereNumber('rnc')->name('rnc.publish');
+        Route::post('rnc/{rnc}/republicar', [RncController::class, 'republish'])->whereNumber('rnc')->name('rnc.republish');
+        Route::post('rnc/{rnc}/revisoes/{revision}/renovar-link', [RncController::class, 'renewPublicLink'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.link.renew');
+        Route::get('rnc/{rnc}/revisoes/{revision}/markdown', [RncController::class, 'revisionMarkdown'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.markdown');
+        Route::get('rnc/{rnc}/revisoes/{revision}/pdf', [RncController::class, 'revisionPdf'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.pdf');
+        Route::get('rnc/{rnc}/revisoes/{revision}/imprimir', [RncController::class, 'revisionPrint'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.print');
+        Route::post('rnc/{rnc}/revisoes/{revision}/enviar', [RncController::class, 'send'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.send');
+
+        // Catálogos globais do RNC (Admin/SuperAdmin)
+        Route::get('rnc/catalogos', [RncCatalogoController::class, 'index'])->name('rnc.catalogo.index');
+        Route::post('rnc/catalogos/projetos', [RncCatalogoController::class, 'storeProjeto'])->name('rnc.catalogo.projeto.store');
+        Route::put('rnc/catalogos/projetos/{projeto}', [RncCatalogoController::class, 'updateProjeto'])->name('rnc.catalogo.projeto.update');
+        Route::delete('rnc/catalogos/projetos/{projeto}', [RncCatalogoController::class, 'destroyProjeto'])->name('rnc.catalogo.projeto.destroy');
+        Route::post('rnc/catalogos/criticidades', [RncCatalogoController::class, 'storeCriticidade'])->name('rnc.catalogo.criticidade.store');
+        Route::put('rnc/catalogos/criticidades/{criticidade}', [RncCatalogoController::class, 'updateCriticidade'])->name('rnc.catalogo.criticidade.update');
+        Route::delete('rnc/catalogos/criticidades/{criticidade}', [RncCatalogoController::class, 'destroyCriticidade'])->name('rnc.catalogo.criticidade.destroy');
+        Route::post('rnc/catalogos/classificacoes', [RncCatalogoController::class, 'storeClassificacao'])->name('rnc.catalogo.classificacao.store');
+        Route::put('rnc/catalogos/classificacoes/{classificacao}', [RncCatalogoController::class, 'updateClassificacao'])->name('rnc.catalogo.classificacao.update');
+        Route::delete('rnc/catalogos/classificacoes/{classificacao}', [RncCatalogoController::class, 'destroyClassificacao'])->name('rnc.catalogo.classificacao.destroy');
     });
 
     Route::delete('evidencias-prontuario/{evidence}', [ProntuarioController::class, 'destroyEvidence'])
@@ -117,6 +162,9 @@ Route::middleware(['auth', '2fa'])->group(function () {
 
     // ---- Clientes (super admin) ----
     Route::get('tenants/cnpj/{cnpj}', [TenantController::class, 'lookupCnpj'])->name('tenants.cnpj-lookup');
+    Route::get('tenants/cep/{cep}', [TenantController::class, 'lookupCep'])->name('tenants.cep-lookup');
+    Route::get('tenants/cidades', [TenantController::class, 'cidades'])->name('tenants.cidades');
+    Route::get('tenants/bairros', [TenantController::class, 'bairros'])->name('tenants.bairros');
     Route::resource('tenants', TenantController::class);
 
     // ---- Usuários ----

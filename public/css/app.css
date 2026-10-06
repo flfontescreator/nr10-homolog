@@ -8,6 +8,8 @@
     --accent: #2563eb;
     --accent-dark: #1d4ed8;
     --accent-soft: #dbeafe;
+    --accent-alt: #1e40af;
+    --accent-alt-soft: #e0e7ff;
     --bg: #f5f7fa;
     --card: #ffffff;
     --border: #e2e8f0;
@@ -727,8 +729,14 @@ table.grid.docs-grid th {
 }
 
 .badge-blue {
-    background: #dbeafe;
-    color: #1d4ed8;
+    background: var(--accent-soft);
+    color: var(--accent-dark);
+}
+
+/* Segundo azul da paleta: distingue "Item" e "Validade" do azul do Módulo/Documento. */
+.badge-blue-alt {
+    background: var(--accent-alt-soft);
+    color: var(--accent-alt);
 }
 
 .badge-green {

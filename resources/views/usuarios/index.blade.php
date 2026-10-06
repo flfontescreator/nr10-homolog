@@ -46,7 +46,7 @@
                                     @endif
                                 </td>
                             @endif
-                            <td>{{ $user->last_login_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: '—' }}</td>
+                            <td>{{ $user->last_login_at?->format('d/m/Y H:i') ?: '—' }}</td>
                             <td class="text-right" style="white-space:nowrap">
                                 <a class="btn btn-sm btn-secondary" href="{{ route('usuarios.show', $user) }}">Ver</a>
                                 @if(auth()->user()->isAdmin())

@@ -14,12 +14,12 @@ use App\Models\NcDocumentItem;
 use App\Models\TenantItem;
 use App\Support\Audit;
 use App\Support\CronogramaOptions;
+use App\Support\EvidenciaUploadService;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -259,26 +259,21 @@ class CronogramaController extends Controller
 
         $request->validate([
             'evidence' => ['required', 'file', 'max:20480'], // 20 MB
+            // Descrição e validade são OPCIONAIS neste módulo; obrigatórias no Funcionário.
+            'description' => ['nullable', 'string', 'max:255'],
+            'validade' => ['nullable', 'date'],
         ]);
 
-        /** @var UploadedFile $file */
-        $file = $request->file('evidence');
-        $this->guardSafeFile($file);
-
-        $stored = $file->store('evidences/tenant-'.$tenantId, [
-            'disk' => 'local',
-        ]);
-
-        $evidence = Evidence::create([
-            'tenant_id' => $tenantId,
-            'tenant_item_id' => $item->id,
-            'uploaded_by' => $request->user()->id,
-            'original_name' => $file->getClientOriginalName(),
-            'stored_path' => $stored,
-            'disk' => 'local',
-            'mime_type' => $file->getMimeType(),
-            'size_bytes' => $file->getSize(),
-        ]);
+        // O prefixo do nome do arquivo é o da TELA onde o anexo foi feito:
+        // em contexto de documento o arquivo é do RNC, no plano é do Cronograma.
+        $evidence = EvidenciaUploadService::storeForTenantItem(
+            $request->file('evidence'),
+            $item,
+            $request->user(),
+            $request->filled('description') ? $request->string('description')->toString() : null,
+            EvidenciaUploadService::resolveValidade($request),
+            $document ? EvidenciaUploadService::MODULO_RNC : EvidenciaUploadService::MODULO_CRONOGRAMA,
+        );
 
         // Em contexto de documento, o arquivo entra na BIBLIOTECA vinculado ao
         // sub-item do documento (pivô) e ao DN (badge em Gestão de Documentos).

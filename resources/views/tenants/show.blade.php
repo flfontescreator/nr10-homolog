@@ -46,7 +46,7 @@
             <dt>Contato</dt><dd>{{ $tenant->contact_name ?: '—' }}</dd>
             <dt>E-mail do administrador</dt><dd>{{ $tenant->contact_email ?: '—' }}</dd>
             <dt>Telefone</dt><dd>{{ $tenant->contact_phone ?: '—' }}</dd>
-            <dt>Endereço</dt><dd>{{ $tenant->address ?: '—' }}</dd>
+            <dt>Endereço</dt><dd>{{ $tenant->enderecoCompleto() ?: '—' }}</dd>
         </dl>
     </div>
 @endsection

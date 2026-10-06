@@ -794,19 +794,20 @@ class NcDocumentModuleTest extends TestCase
 
         // Como viewer (sem picker de biblioteca), a listagem do plano mostra só
         // o arquivo do plano; a do documento mostra só o arquivo do documento.
+        // Os nomes são os GERADOS pelo sistema, não os enviados no upload.
         $this->actingAs($this->viewer)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', $item))
             ->assertOk()
-            ->assertSee('plano.png')
-            ->assertDontSee('documento.png');
+            ->assertSee(basename($planEvidence->stored_path))
+            ->assertDontSee(basename($docEvidence->stored_path));
 
         $this->actingAs($this->viewer)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', [$item, 'from' => 'document', 'document_id' => $document->id]))
             ->assertOk()
-            ->assertSee('documento.png')
-            ->assertDontSee('plano.png');
+            ->assertSee(basename($docEvidence->stored_path))
+            ->assertDontSee(basename($planEvidence->stored_path));
     }
 
     public function test_document_creation_is_audited(): void
@@ -916,7 +917,7 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', [$item, 'from' => 'document', 'document_id' => $document->id]))
             ->assertOk()
-            ->assertSee('doc-tela.png');
+            ->assertSee(basename($evidence->stored_path));
 
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
@@ -1194,7 +1195,7 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', [$item, 'from' => 'document', 'document_id' => $doc2->id]))
             ->assertOk()
-            ->assertSee('reuso.png');
+            ->assertSee(basename($evidence->stored_path));
 
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
@@ -1235,13 +1236,13 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', $itemA))
             ->assertOk()
-            ->assertSee('origem.png');
+            ->assertSee(basename($evidence->stored_path));
 
         $this->actingAs($this->viewer)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->get(route('cronograma.show', $itemB))
             ->assertOk()
-            ->assertSee('origem.png');
+            ->assertSee(basename($evidence->stored_path));
 
         // Gestão de Documentos: badges na coluna Item com AMBOS os itens vinculados.
         $this->actingAs($this->manager)
@@ -1305,6 +1306,8 @@ class NcDocumentModuleTest extends TestCase
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->post(route('cronograma.evidencia.upload', $itemB), ['evidence' => UploadedFile::fake()->image('disponivel.png')]);
 
+        $evidence = Evidence::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
+
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
             ->post(route('nc-documents.store'), ['catalog_item_ids' => [$ids[0]]]);
@@ -1317,7 +1320,7 @@ class NcDocumentModuleTest extends TestCase
             ->get(route('cronograma.show', $itemA))
             ->assertOk()
             ->assertSee(route('cronograma.biblioteca.attach', $itemA), false)
-            ->assertSee('disponivel.png');
+            ->assertSee(basename($evidence->stored_path));
 
         // Documento: o form de reuso mantém o contexto (from=document&document_id).
         $this->actingAs($this->manager)
@@ -1325,7 +1328,7 @@ class NcDocumentModuleTest extends TestCase
             ->get(route('cronograma.show', [$itemA, 'from' => 'document', 'document_id' => $document->id]))
             ->assertOk()
             ->assertSee(htmlspecialchars(route('cronograma.biblioteca.attach', [$itemA, 'from' => 'document', 'document_id' => $document->id])), false)
-            ->assertSee('disponivel.png');
+            ->assertSee(basename($evidence->stored_path));
     }
 
     public function test_cannot_attach_evidence_from_another_tenant_to_plan(): void

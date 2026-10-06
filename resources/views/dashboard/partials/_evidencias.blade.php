@@ -28,7 +28,7 @@
                         </td>
                         <td>{{ $ev->tenantItem->catalogItem->code ?? '—' }}</td>
                         <td>{{ $ev->uploader?->name ?? '—' }}</td>
-                        <td>{{ $ev->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</td>
+                        <td>{{ $ev->created_at->format('d/m/Y H:i') }}</td>
                     </tr>
                 @endforeach
             </tbody>

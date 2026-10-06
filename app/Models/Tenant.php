@@ -16,6 +16,12 @@ class Tenant extends Model
         'contact_email',
         'contact_phone',
         'address',
+        'cep',
+        'numero',
+        'complemento',
+        'bairro',
+        'cidade',
+        'uf',
         'is_active',
         'created_by',
     ];
@@ -25,6 +31,39 @@ class Tenant extends Model
         return [
             'is_active' => 'boolean',
         ];
+    }
+
+    /**
+     * Endereço do cliente em uma linha só, no mesmo formato do autocompletar
+     * de CNPJ: "Rua das Flores, 123, Sala 4, Centro, São Paulo — SP, CEP 01000-000".
+     *
+     * Em cadastros antigos `address` já guarda o endereço inteiro (logradouro
+     * e número misturados): quando o número aparece no logradouro ele não é
+     * repetido. Retorna null quando nada está preenchido.
+     */
+    public function enderecoCompleto(): ?string
+    {
+        $logradouro = trim((string) $this->address);
+        $numero = trim((string) $this->numero);
+
+        if ($numero !== '' && preg_match('/(?:^|[\s,])'.preg_quote($numero, '/').'(?:[\s,]|$)/u', $logradouro)) {
+            $numero = '';
+        }
+
+        $localidade = implode(' — ', array_filter([
+            trim((string) $this->cidade),
+            strtoupper(trim((string) $this->uf)),
+        ], fn ($value) => $value !== ''));
+
+        $partes = array_filter([
+            implode(', ', array_filter([$logradouro, $numero], fn ($value) => $value !== '')),
+            trim((string) $this->complemento),
+            trim((string) $this->bairro),
+            $localidade,
+            $this->cep ? 'CEP '.$this->cep : '',
+        ], fn ($value) => $value !== '');
+
+        return $partes === [] ? null : implode(', ', $partes);
     }
 
     public function users(): HasMany
@@ -50,16 +89,14 @@ class Tenant extends Model
     /**
      * Cria o ambiente completo: todos os subitens do catalogo nascem
      * vinculados a este cliente com os campos de controle vazios.
-     * Exceção: os subitens do item 4 do prontuário (4.1..4.8) são por
-     * funcionário e não são criados aqui — veja Funcionario::bootstrapProntuarioItems().
+     *
+     * A documentação de cada funcionário é independente e vive em
+     * `funcionario_items` — não é criada aqui.
      */
     public function bootstrapItems(): int
     {
         $subitems = CatalogItem::query()
             ->where('is_section', false)
-            ->whereNot(function ($q) {
-                $q->where('source', 'prontuario')->where('n1', 4);
-            })
             ->orderBy('source')
             ->orderBy('n1')
             ->orderBy('n2')
@@ -67,11 +104,8 @@ class Tenant extends Model
             ->orderBy('n4')
             ->get(['id', 'code', 'title', 'source']);
 
-        // A unique key inclui funcionario_id; com NULL o MySQL não deduplica,
-        // então a exclusividade das linhas gerais é garantida aqui na aplicação.
         $existing = DB::table('tenant_items')
             ->where('tenant_id', $this->id)
-            ->whereNull('funcionario_id')
             ->pluck('catalog_item_id');
 
         $subitems = $subitems->whereNotIn('id', $existing);

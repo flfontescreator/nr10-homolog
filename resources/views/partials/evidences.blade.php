@@ -3,8 +3,10 @@
 @php($canDeleteEvidence = $canDeleteEvidence ?? false)
 @php($destroyRouteModel = $destroyRouteModel ?? null)
 @php($destroyRouteParams = $destroyRouteParams ?? [])
+@php($destroyRouteResolver = $destroyRouteResolver ?? null)
 @php($libraryAvailable = $libraryAvailable ?? collect())
 @php($libraryAttachRoute = $libraryAttachRoute ?? null)
+@php($validadeMarcada = (bool) old('validade_aplica', false))
 
 <div class="card">
     <h2 class="card-title">Evidências</h2>
@@ -13,14 +15,58 @@
         <form method="POST" action="{{ $uploadRoute }}" enctype="multipart/form-data" class="mb-4">
             @csrf
             <div class="form-group" style="margin-bottom:0">
-                <label for="evidence">Anexar arquivo (foto, PDF, documento)</label>
-                <div class="form-grid" style="grid-template-columns:1fr auto">
-                    <input type="file" name="evidence" id="evidence" required>
-                    <button class="btn" type="submit">Anexar</button>
-                </div>
+                <label for="evidence">Anexar arquivo (foto, PDF, documento) *</label>
+                <input type="file" name="evidence" id="evidence" required>
                 <div class="field-hint">Formatos de imagem e documentos. Executáveis (exe, php, bat, etc.) são bloqueados.</div>
             </div>
+            <div class="form-grid" style="grid-template-columns:1fr 1fr;gap:12px;margin-top:12px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label for="evidence-description">Descrição do arquivo</label>
+                    <input type="text" name="description" id="evidence-description" maxlength="255"
+                           value="{{ old('description') }}"
+                           placeholder="Ex.: Certificado de Aptidão Física">
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label for="evidence-validade">Validade do documento</label>
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                        <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0">
+                            <input type="checkbox" name="validade_aplica" value="1" id="validade-aplica"
+                                   @checked($validadeMarcada)
+                                   onchange="toggleEvidenceValidade(this)">
+                            Se aplica
+                        </label>
+                        <input type="date" name="validade" id="evidence-validade" style="max-width:220px"
+                               value="{{ old('validade') }}"
+                               @disabled(! $validadeMarcada)>
+                    </div>
+                    <div class="field-hint">Padrão: não se aplica. Marque para habilitar a data.</div>
+                </div>
+            </div>
+            <button class="btn" type="submit" style="margin-top:12px">Anexar</button>
         </form>
+
+        <script>
+            // "Se aplica" habilita/desabilita a data de validade do anexo
+            // (unchecked por padrão; marcado exige data no controller).
+            function toggleEvidenceValidade(checkbox) {
+                var box = checkbox || document.getElementById('validade-aplica');
+                var campo = document.getElementById('evidence-validade');
+
+                if (!box || !campo) {
+                    return;
+                }
+
+                campo.disabled = !box.checked;
+
+                if (!box.checked) {
+                    campo.value = '';
+                }
+            }
+
+            if (document.getElementById('validade-aplica')) {
+                toggleEvidenceValidade();
+            }
+        </script>
 
         @if($libraryAttachRoute && $libraryAvailable->isNotEmpty())
             <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:14px">
@@ -82,14 +128,24 @@
                     <a href="{{ route('documentos.download', $evidence) }}" title="{{ $evidence->original_name }}">
                         {{ \Illuminate\Support\Str::limit($evidence->original_name, 60) }}
                     </a>
+                    @if($evidence->description)
+                        <div style="font-size:13px;margin-top:2px">{{ $evidence->description }}</div>
+                    @endif
                     <div class="muted small">
-                        {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
+                        {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->format('d/m/Y H:i') }}
+                        @if($evidence->validade)
+                            · <span class="badge {{ ($evidence->daysUntilExpiry() ?? 0) <= 30 ? 'badge-red' : 'badge-blue' }}">
+                                Vence em {{ $evidence->daysUntilExpiry() >= 0 ? $evidence->daysUntilExpiry().' dias' : abs($evidence->daysUntilExpiry()).' dias' }}
+                            </span>
+                        @endif
                     </div>
                 </div>
                 @if($canDeleteEvidence)
-                    @php($destroyAction = $destroyRouteModel
-                        ? route($destroyRoute, array_merge([$destroyRouteModel, $evidence], $destroyRouteParams))
-                        : route($destroyRoute, array_merge([$evidence], $destroyRouteParams)))
+                    @php($destroyAction = $destroyRouteResolver
+                        ? $destroyRouteResolver($evidence)
+                        : ($destroyRouteModel
+                            ? route($destroyRoute, array_merge([$destroyRouteModel, $evidence], $destroyRouteParams))
+                            : route($destroyRoute, array_merge([$evidence], $destroyRouteParams))))
                     <form method="POST" action="{{ $destroyAction }}"
                           data-confirm="Excluir o vínculo deste subitem? O arquivo continua na biblioteca se estiver vinculado em outro lugar.">
                         @csrf

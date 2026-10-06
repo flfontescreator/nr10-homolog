@@ -23,35 +23,51 @@ class DocumentoController extends Controller
         $query = Evidence::query()
             ->with([
                 'tenantItem.catalogItem',
-                'tenantItem.funcionario',
+                'funcionarioItem.funcionario',
                 'uploader',
                 'documents',
                 'documentItems.tenantItem.catalogItem',
                 'tenantItems.catalogItem',
             ])
-            ->when($source, fn ($q) => $q->whereHas(
-                'tenantItem.catalogItem',
-                fn ($c) => $c->where('source', $source)
-            ))
+            ->when($source === 'funcionarios', fn ($q) => $q->whereNotNull('funcionario_item_id'))
+            ->when($source && $source !== 'funcionarios', fn ($q) => $q
+                ->whereNull('funcionario_item_id')
+                ->whereHas('tenantItem.catalogItem', fn ($c) => $c->where('source', $source)))
             ->latest();
 
         $documents = $query->paginate(25);
 
-        // Rastreabilidade: RNCs que contêm o sub-item (ex.: 4.x de funcionário) ao
-        // qual o arquivo está ancorado — a referência por sub-item, além do badge
-        // direto de biblioteca (evidence_document).
-        $referencing = NcDocumentItem::query()
-            ->whereIn('tenant_item_id', $documents->getCollection()->pluck('tenant_item_id')->filter())
-            ->with('document')
-            ->get()
-            ->groupBy('tenant_item_id')
-            ->map(fn ($entries) => $entries->pluck('document'));
+        $collection = $documents->getCollection();
+
+        // Rastreabilidade: RNCs que contêm o item ao qual o arquivo está ancorado
+        // — a referência por item, além do badge direto de biblioteca
+        // (evidence_document). Funcionários e catálogo usam âncoras distintas.
+        $referencing = collect();
+
+        foreach ([
+            'tenant_item_id' => $collection->pluck('tenant_item_id')->filter(),
+            'funcionario_item_id' => $collection->pluck('funcionario_item_id')->filter(),
+        ] as $column => $anchorIds) {
+            if ($anchorIds->isEmpty()) {
+                continue;
+            }
+
+            $referencing = $referencing->merge(
+                NcDocumentItem::query()
+                    ->whereIn($column, $anchorIds)
+                    ->with('document')
+                    ->get()
+                    ->groupBy($column)
+                    ->map(fn ($entries) => $entries->pluck('document'))
+            );
+        }
 
         return view('documentos.index', [
             'documents' => $documents,
             'referencing' => $referencing,
             'activeSource' => $source,
             'sources' => Source::cases(),
+            'canHardDelete' => $request->user()->canDeleteEvidence(),
         ]);
     }
 
@@ -88,13 +104,14 @@ class DocumentoController extends Controller
         return response()->file($path);
     }
 
+    /**
+     * Exclusão de um anexo na Gestão de Documentos (SuperAdmin/Admin/Manager).
+     * O arquivo é apagado do disco e a linha some — inclusive quando está preso
+     * a um documento finalizado ou a uma RNC publicada.
+     */
     public function destroy(Request $request, Evidence $evidence): RedirectResponse
     {
         if (! $request->user()->canDeleteEvidence() || $evidence->tenant_id !== TenantContext::id()) {
-            abort(403);
-        }
-
-        if ($evidence->linkedToFinalizedDocument()) {
             abort(403);
         }
 

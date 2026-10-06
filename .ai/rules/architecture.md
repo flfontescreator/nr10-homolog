@@ -77,5 +77,65 @@ Catálogo FIXO vem de planilhas CSV (`storage/app/imports`) → `catalog_items`
   usar `0`; `mapWithKeys` recebe `(value, key)`.
 - Frontend: Blade + CSS já compilado (`public/css/app.css`); não rodar `npm run build` —
   reutilizar classes existentes, estilo pontual via `style=` inline.
+- **Encoding (obrigatório em TODO ajuste/correção):** antes de concluir qualquer
+  edição em view/Blade/PHP, varrer o arquivo procurando mojibake
+  (`Ã©`, `Ã§`, `â‚¬`, `â€œ`, `ï¿½`, `Ã£o`, `Â` solto) e conferir os codepoints
+  (`<U+XXXX>`) das strings acentuadas/títulos. Corrompido → reparar por BYTE:
+  round-trip Latin-1/28591 + tabela de substituição (maiores primeiro), nunca
+  "reescrito a olho" nem `Set-Content` (PowerShell regrava em UTF-16/ANSI).
+  Backup dos originais antes de mexer. No shell do Windows não há `rg`/`grep`:
+  usar `Select-String`, byte array (`[byte[]](0xC3,0xA9)`) ou dump de codepoints —
+  NUNCA embutir UTF-8 literal em comando PowerShell (console CP850 deturpa o
+  padrão e o teste passa a não achar nada). Conferência final:
+  `php artisan view:clear && php artisan view:cache` + testes da área.
 - Produção: só com autorização explícita; backups em `storage/app/backups/*.sql`;
   tag `pre-nc-rework` = ponto de rollback.
+
+## Fuso horário (regra transversal — vale para TODAS as seções)
+- O sistema inteiro é de uso exclusivo no Brasil. **Toda** implementação tem que
+  refletir o fuso **-03:00 `America/Sao_Paulo`** (Brasília/São Paulo): código,
+  telas, nomes de arquivo, PDF, e-mail, job, seed e teste.
+- A fonte única é `config/app.php` → `'timezone' => 'America/Sao_Paulo'`
+  (fixo no config, **sem `env()`**). O Brasil não tem horário de verão desde
+  2019, então esse valor é constante — não parametrizar.
+- Consequência prática: `now()`, `today()`, `Carbon::now()`, casts de data e
+  `date_default_timezone_get()` já saem em -03:00. **Nunca** escrever
+  `->setTimezone('America/Sao_Paulo')` no código: é redundante e mascara erro.
+  (Havia 11 conversões manuais espalhadas por 8 views + `DashboardStats`;
+  foram removidas em favor desta regra.)
+- Se um dia aparecer `+00:00`/`Z`/`utc()` em tela, nome de arquivo ou relatório,
+  é bug — e não é para "consertar" reconvertindo na view. A causa é
+  `app.timezone`/ambiente, não o ponto de exibição.
+- **Armadilha já ocorrida:** o nome do arquivo anexado gravava a data em UTC
+  (`now()->format('dmY')`). Entre 21:00 e 23:59 de Brasília o dia UTC já é o dia
+  seguinte, então a Gestão de Documentos exibia um arquivo com **+1 dia**
+  (`img_rnc_02102026_...` numa noite de 01/10). Qualquer data vinda de
+  `now()` para dentro de um nome, texto ou documento tem que sair em -03:00.
+- Dados gravados antes desta regra foram escritos com o app em UTC e passam a
+  ser lidos como -03:00 (ficam 3 h adiantados). São de base de teste; não há
+  backfill — zerar a base é mais barato que converter.
+
+## Anexos (evidências)
+- Todo upload passa por `EvidenciaUploadService::storedFilename()`. Nenhum
+  controller chama `store()`/`storeAs()` direto — se surgir um novo módulo de
+  anexos, ele usa o serviço.
+- Nome: `{img|doc}_{módulo}_{ddmmaaaa}_{sequencial de 9 dígitos}`, ex.
+  `img_rnc_01102026_000000001.png`. `img` = MIME `image/*`; tudo o mais é `doc`.
+- A data `ddmmaaaa` vem de `now()` e por isso já está em -03:00 (ver "Fuso
+  horário" acima). Não reintroduzir `setTimezone()` aqui.
+- Módulos: `rnc` (RNC novo e documentos de NC, ver `decisions.md`), `fun`,
+  `prt`, `crn`. O prefixo é o da TELA do upload: cronograma em contexto de
+  documento (`?from=document`) usa `rnc`, no plano usa `crn`.
+- O `sequencial` é GLOBAL por categoria (uma para imagens, outra para
+  documentos/PDF), persistido em `evidence_sequences` e incrementado com
+  `EvidenceSequence::proximo()` — transação + `lockForUpdate()`. NÃO é diário
+  nem por módulo/cliente: é o que garante que a ordem alfabética do nome
+  equivale à ordem de upload do sistema inteiro e que duas telas nunca gerem o
+  mesmo nome.
+- A sequência NÃO tem teto: ao ultrapassar 999.999.999 continua em
+  1000000001… e o `sprintf('%09d')` passa a emitir 10 dígitos. Aviso de "restam
+  1000" é regra de negócio separada, não limite técnico.
+- O nome enviado pelo usuário é DESCARTADO. `original_name` guarda o nome
+  GERADO — é ele que a Gestão de Documentos exibe e que o download entrega.
+  Consequência: os anexos existentes ficam com o nome antigo (não há migração
+  retroativa) e os testes nunca devem afirmar o nome que o usuário digitou.

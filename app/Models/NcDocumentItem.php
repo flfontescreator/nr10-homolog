@@ -24,6 +24,7 @@ class NcDocumentItem extends Model
         'document_id',
         'catalog_item_id',
         'tenant_item_id',
+        'funcionario_item_id',
         'code',
         'title',
         'source',
@@ -88,6 +89,11 @@ class NcDocumentItem extends Model
     public function tenantItem(): BelongsTo
     {
         return $this->belongsTo(TenantItem::class);
+    }
+
+    public function funcionarioItem(): BelongsTo
+    {
+        return $this->belongsTo(FuncionarioItem::class);
     }
 
     public function updater(): BelongsTo

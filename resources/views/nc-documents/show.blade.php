@@ -39,12 +39,12 @@
                     <button class="btn btn-sm" type="submit">Reabrir edição</button>
                 </form>
             @endif
-            @if($canDelete)
+            @if($canHardDelete)
                 <form method="POST" action="{{ route('nc-documents.destroy', $document) }}"
-                      onsubmit="return confirm('Excluir o {{ $document->code }}? O histórico e os vínculos serão removidos.')">
+                      data-confirm="TEMP (teste): excluir definitivamente o {{ $document->code }}? O histórico e os vínculos serão removidos.">
                     @csrf
                     @method('DELETE')
-                    <button class="btn btn-sm" type="submit">Excluir</button>
+                    <button class="btn btn-sm btn-danger" type="submit">Excluir (teste)</button>
                 </form>
             @endif
         </div>
@@ -54,7 +54,7 @@
         <span class="badge badge-blue">Itens: {{ $document->items_count ?? $document->items->count() }}</span>
         <span class="badge badge-amber">Não concluídos: {{ $pending }}</span>
         <span class="badge badge-neutral">Versões: {{ $document->versions->count() }}</span>
-        <span class="muted">Finalizado em: {{ $document->finalized_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: '—' }}</span>
+        <span class="muted">Finalizado em: {{ $document->finalized_at?->format('d/m/Y H:i') ?: '—' }}</span>
     </div>
 
     <div class="card">
@@ -87,8 +87,8 @@
                             <td>
                                 <strong>{{ $entry->display_code }}</strong>
                                 @include('nc-documents.partials._source-badge', ['catalogItem' => $entry->catalogItem, 'source' => $entry->source])
-                                @if($entry->tenantItem?->funcionario)
-                                    <span class="badge badge-neutral">Func: {{ $entry->tenantItem->funcionario->nome }}</span>
+                                @if($entry->funcionarioItem?->funcionario)
+                                    <span class="badge badge-neutral">Func: {{ $entry->funcionarioItem->funcionario->nome }}</span>
                                 @endif
                             </td>
                             <td style="max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ $entry->display_title }}">
@@ -124,8 +124,11 @@
                                 </span>
                             </td>
                             <td class="text-right" style="white-space:nowrap">
+                                @php($entryUrl = $entry->funcionario_item_id
+                                    ? route('funcionarios.item.show', [$entry->funcionarioItem->funcionario, $entry->funcionarioItem])
+                                    : route('cronograma.show', [$entry->tenant_item_id, 'from' => 'document', 'document_id' => $document->id]))
                                 <a class="btn {{ $canWrite && ! $document->is_finalized ? 'btn-sm' : 'btn-sm btn-secondary' }}"
-                                   href="{{ route('cronograma.show', [$entry->tenant_item_id, 'from' => 'document', 'document_id' => $document->id]) }}">
+                                   href="{{ $entryUrl }}">
                                     {{ $canWrite && ! $document->is_finalized ? 'Trabalhar' : 'Ver' }}
                                 </a>
                             </td>
@@ -159,7 +162,7 @@
                             {{ \Illuminate\Support\Str::limit($evidence->original_name, 60) }}
                         </a>
                         <div class="muted small">
-                            {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
+                            {{ $evidence->humanSize() }} · por {{ $evidence->uploader?->name ?? '—' }} · {{ $evidence->created_at->format('d/m/Y H:i') }}
                         </div>
                         <div class="setores-mini">
                             @foreach($evidence->documents as $ref)
@@ -193,7 +196,7 @@
                     <summary style="cursor:pointer">
                         <strong>v{{ $version->version }}</strong>
                         — {{ $version->summary ?: 'Atualização' }}
-                        <span class="muted">· {{ $version->created_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }} · {{ $version->creator?->name ?: '—' }}</span>
+                        <span class="muted">· {{ $version->created_at?->format('d/m/Y H:i') }} · {{ $version->creator?->name ?: '—' }}</span>
                         <span class="badge badge-neutral">{{ count($version->selection) }} itens</span>
                     </summary>
                     <div class="table-wrap" style="margin-top:8px">

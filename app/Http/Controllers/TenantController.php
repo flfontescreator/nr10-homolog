@@ -3,14 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Enums\Role;
+use App\Models\Bairro;
+use App\Models\Cidade;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\CepLookup;
 use App\Support\CnpjLookup;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class TenantController extends Controller
 {
@@ -31,7 +35,7 @@ class TenantController extends Controller
             abort(403);
         }
 
-        return view('tenants.create');
+        return view('tenants.create', ['ufs' => Cidade::UFS]);
     }
 
     /**
@@ -61,6 +65,78 @@ class TenantController extends Controller
         return response()->json($data);
     }
 
+    /**
+     * Consulta pública e gratuita de CEP (ViaCEP) para autocompletar o
+     * endereço no formulário de cliente.
+     *
+     * O bairro não consta do cadastro da Receita Federal, então a resposta
+     * é aproveitada para alimentar a base de bairros da cidade — da próxima
+     * vez o campo já nasce preenchido, mesmo sem o CEP ter sido digitado.
+     */
+    public function lookupCep(Request $request, string $cep): JsonResponse
+    {
+        if (! $request->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        try {
+            $data = CepLookup::lookup($cep);
+        } catch (\Throwable) {
+            return response()->json([
+                'message' => 'Não foi possível consultar o CEP agora. Tente novamente em instantes.',
+            ], 503);
+        }
+
+        if (! $data) {
+            return response()->json([
+                'message' => 'CEP não encontrado. Verifique os dígitos e tente novamente.',
+            ], 404);
+        }
+
+        Cidade::registrar($data['uf'], $data['cidade']);
+        Bairro::registrar($data['uf'], $data['cidade'], $data['bairro']);
+
+        return response()->json($data);
+    }
+
+    /**
+     * Cidades de uma UF, para o autocompletar do cadastro de cliente.
+     */
+    public function cidades(Request $request): JsonResponse
+    {
+        if (! $request->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'uf' => ['required', 'string', 'size:2'],
+        ]);
+
+        $nomes = Cidade::query()->daUf($data['uf'])->pluck('nome');
+
+        return response()->json($nomes->values());
+    }
+
+    /**
+     * Bairros de uma cidade, para o autocompletar do cadastro de cliente:
+     * só aparecem os bairros da cidade selecionada.
+     */
+    public function bairros(Request $request): JsonResponse
+    {
+        if (! $request->user()->isSuperAdmin()) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'uf' => ['required', 'string', 'size:2'],
+            'cidade' => ['required', 'string', 'max:150'],
+        ]);
+
+        $nomes = Bairro::query()->daCidade($data['uf'], $data['cidade'])->pluck('nome');
+
+        return response()->json($nomes->values());
+    }
+
     public function store(Request $request): RedirectResponse
     {
         $user = $request->user();
@@ -68,17 +144,19 @@ class TenantController extends Controller
             abort(403);
         }
 
+        $this->prepararEndereco($request);
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'cnpj' => ['nullable', 'string', 'max:18'],
             'contact_name' => ['nullable', 'string', 'max:255'],
             'contact_email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'contact_phone' => ['nullable', 'string', 'max:40'],
-            'address' => ['nullable', 'string', 'max:255'],
+            ...$this->enderecoRules(),
         ]);
 
         $tenant = Tenant::create([
-            ...$data,
+            ...$this->normalizeEndereco($data),
             'created_by' => $user->id,
         ]);
 
@@ -115,12 +193,14 @@ class TenantController extends Controller
     {
         $this->authorizeManage($tenant);
 
-        return view('tenants.edit', ['tenant' => $tenant]);
+        return view('tenants.edit', ['tenant' => $tenant, 'ufs' => Cidade::UFS]);
     }
 
     public function update(Request $request, Tenant $tenant): RedirectResponse
     {
         $this->authorizeManage($tenant);
+
+        $this->prepararEndereco($request);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -128,11 +208,11 @@ class TenantController extends Controller
             'contact_name' => ['nullable', 'string', 'max:255'],
             'contact_email' => ['nullable', 'email', 'max:255'],
             'contact_phone' => ['nullable', 'string', 'max:40'],
-            'address' => ['nullable', 'string', 'max:255'],
+            ...$this->enderecoRules(),
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
-        $tenant->update($data);
+        $tenant->update($this->normalizeEndereco($data));
 
         return redirect()->route('tenants.show', $tenant)
             ->with('success', 'Cliente atualizado.');
@@ -177,6 +257,61 @@ class TenantController extends Controller
         $request->session()->put('tenant_id', $tenant->id);
 
         return back()->with('success', "Ambiente alterado para {$tenant->name}.");
+    }
+
+    /**
+     * Antes da validação: UF em maiúsculas, para que a regra de sigla aceite
+     * tanto o <select> do formulário quanto uma entrada programática.
+     */
+    protected function prepararEndereco(Request $request): void
+    {
+        $uf = $request->input('uf');
+
+        if (is_string($uf)) {
+            $request->merge(['uf' => strtoupper(trim($uf))]);
+        }
+    }
+
+    /**
+     * Endereço estruturado do cliente (logradouro + número + complemento +
+     * bairro/cidade/UF + CEP). `address` guarda o logradouro; a string exibida
+     * é montada por Tenant::enderecoCompleto().
+     */
+    protected function enderecoRules(): array
+    {
+        return [
+            'address' => ['nullable', 'string', 'max:255'],
+            'cep' => ['nullable', 'string', 'regex:/^[0-9]{5}-?[0-9]{3}$/'],
+            'numero' => ['nullable', 'string', 'max:20'],
+            'complemento' => ['nullable', 'string', 'max:120'],
+            'bairro' => ['nullable', 'string', 'max:120'],
+            'cidade' => ['nullable', 'string', 'max:120'],
+            'uf' => ['nullable', 'string', Rule::in(array_keys(Cidade::UFS))],
+        ];
+    }
+
+    /**
+     * Normaliza o endereço antes de gravar: CEP sem máscara vira 00000-000,
+     * UF em maiúsculas e textos aparados (string vazia vira null).
+     */
+    protected function normalizeEndereco(array $data): array
+    {
+        foreach (['address', 'numero', 'complemento', 'bairro', 'cidade'] as $campo) {
+            if (array_key_exists($campo, $data) && is_string($data[$campo])) {
+                $data[$campo] = trim($data[$campo]) ?: null;
+            }
+        }
+
+        if (array_key_exists('cep', $data)) {
+            $digits = CepLookup::normalize((string) $data['cep']);
+            $data['cep'] = $digits ? CepLookup::mask($digits) : null;
+        }
+
+        if (array_key_exists('uf', $data) && is_string($data['uf'])) {
+            $data['uf'] = strtoupper(trim($data['uf'])) ?: null;
+        }
+
+        return $data;
     }
 
     protected function authorizeManage(Tenant $tenant): void

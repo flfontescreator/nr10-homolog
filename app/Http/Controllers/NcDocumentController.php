@@ -8,6 +8,7 @@ use App\Models\Evidence;
 use App\Models\EvidenceDocument;
 use App\Models\EvidenceDocumentItem;
 use App\Models\Funcionario;
+use App\Models\FuncionarioItem;
 use App\Models\NcDocument;
 use App\Models\NcDocumentItem;
 use App\Models\TenantItem;
@@ -41,14 +42,15 @@ class NcDocumentController extends Controller
     }
 
     /**
-     * Funcionários com os respectivos sub-itens do item 4 (o picker do documento
-     * apresenta cada sub-item individual, com evidência própria por funcionário).
+     * Funcionários com os respectivos itens de documentação (o picker do documento
+     * apresenta cada item individual, com evidência e situação próprias por
+     * funcionário).
      */
     protected function employeeItems()
     {
         return Funcionario::query()
             ->where('tenant_id', TenantContext::id())
-            ->with('prontuarioItems')
+            ->with(['items' => fn ($q) => $q->with('situacao')])
             ->orderBy('nome')
             ->get();
     }
@@ -101,7 +103,13 @@ class NcDocumentController extends Controller
                 'updated_by' => $user->id,
             ]);
 
-            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId, $data['preserve_item_ids'] ?? []);
+            $this->syncItems(
+                $document,
+                $data['catalog_item_ids'] ?? [],
+                $data['funcionario_item_ids'] ?? [],
+                $tenantId,
+                $data['preserve_item_ids'] ?? [],
+            );
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
 
             $document->recordVersion('Criação do documento', $user->id);
@@ -109,7 +117,7 @@ class NcDocumentController extends Controller
             return $document;
         });
 
-        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['tenant_item_ids'] ?? []);
+        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['funcionario_item_ids'] ?? []);
 
         Audit::record(
             'nc_document.created',
@@ -117,7 +125,7 @@ class NcDocumentController extends Controller
             $document,
             $tenantId,
             [],
-            ['catalog_item_ids' => $data['catalog_item_ids'] ?? [], 'tenant_item_ids' => $data['tenant_item_ids'] ?? []],
+            ['catalog_item_ids' => $data['catalog_item_ids'] ?? [], 'funcionario_item_ids' => $data['funcionario_item_ids'] ?? []],
             $request->user(),
         );
 
@@ -129,10 +137,10 @@ class NcDocumentController extends Controller
     {
         $this->assertSameTenant($document);
 
-        $document->load(['items.catalogItem', 'items.tenantItem.funcionario', 'versions.creator', 'creator']);
+        $document->load(['items.catalogItem', 'items.funcionarioItem.funcionario', 'versions.creator', 'creator']);
 
         $pending = $document->items
-            ->filter(fn (NcDocumentItem $entry) => $entry->tenant_item_id && $entry->status?->value !== 'Concluído')
+            ->filter(fn (NcDocumentItem $entry) => ($entry->tenant_item_id || $entry->funcionario_item_id) && $entry->status?->value !== 'Concluído')
             ->count();
 
         $entryIds = $document->items->pluck('id');
@@ -151,6 +159,8 @@ class NcDocumentController extends Controller
             'document' => $document,
             'canWrite' => request()->user()->canWrite(),
             'canDelete' => request()->user()->canDelete(),
+            // TEMPORÁRIO: hard delete de documento só aparece em local/testing.
+            'canHardDelete' => app()->environment('local', 'testing') && request()->user()->canDelete(),
             'pending' => $pending,
             'evidenceCounts' => $evidenceCounts,
             'libraryFiles' => $document->libraryFiles()
@@ -169,15 +179,15 @@ class NcDocumentController extends Controller
             return back()->with('warning', 'O documento '.$document->code.' já foi finalizado. Reabra a edição para alterar.');
         }
 
-        $document->loadMissing('items.tenantItem');
+        $document->loadMissing(['items.tenantItem', 'items.funcionarioItem']);
 
         $selected = [];
-        $selectedTenantItemIds = [];
+        $selectedFuncionarioItemIds = [];
         $preserveItemIds = [];
 
         foreach ($document->items as $entry) {
-            if ($entry->tenant_item_id && $entry->tenantItem?->funcionario_id) {
-                $selectedTenantItemIds[] = $entry->tenant_item_id;
+            if ($entry->funcionario_item_id) {
+                $selectedFuncionarioItemIds[] = $entry->funcionario_item_id;
             } elseif ($entry->catalog_item_id) {
                 $selected[] = $entry->catalog_item_id;
             } else {
@@ -193,7 +203,7 @@ class NcDocumentController extends Controller
             'operacional' => $this->availableOperacionalItems(),
             'funcionarios' => $this->employeeItems(),
             'selected' => $selected,
-            'selectedTenantItemIds' => $selectedTenantItemIds,
+            'selectedFuncionarioItemIds' => $selectedFuncionarioItemIds,
             'preserveItemIds' => $preserveItemIds,
             'library' => $this->libraryEvidences(),
             'selectedEvidenceIds' => $document->libraryFiles()->pluck('evidences.id')->all(),
@@ -212,7 +222,7 @@ class NcDocumentController extends Controller
         $data = $this->validateSelection($request);
 
         $tenantId = TenantContext::id();
-        $before = $document->items()->get(['catalog_item_id', 'tenant_item_id']);
+        $before = $document->items()->get(['catalog_item_id', 'tenant_item_id', 'funcionario_item_id']);
 
         DB::transaction(function () use ($tenantId, $document, $data, $request) {
             $document->fill([
@@ -221,12 +231,18 @@ class NcDocumentController extends Controller
                 'updated_by' => $request->user()->id,
             ])->save();
 
-            $this->syncItems($document, $data['catalog_item_ids'] ?? [], $data['tenant_item_ids'] ?? [], $tenantId, $data['preserve_item_ids'] ?? []);
+            $this->syncItems(
+                $document,
+                $data['catalog_item_ids'] ?? [],
+                $data['funcionario_item_ids'] ?? [],
+                $tenantId,
+                $data['preserve_item_ids'] ?? [],
+            );
             $this->syncLibrary($document, $data['evidence_ids'] ?? []);
             $document->recordVersion('Atualização do documento', $request->user()->id);
         });
 
-        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['tenant_item_ids'] ?? []);
+        $itemCount = count($data['catalog_item_ids'] ?? []) + count($data['funcionario_item_ids'] ?? []);
 
         Audit::record(
             'nc_document.updated',
@@ -236,8 +252,12 @@ class NcDocumentController extends Controller
             [
                 'catalog_item_ids' => $before->pluck('catalog_item_id')->all(),
                 'tenant_item_ids' => $before->pluck('tenant_item_id')->filter()->all(),
+                'funcionario_item_ids' => $before->pluck('funcionario_item_id')->filter()->all(),
             ],
-            ['catalog_item_ids' => $data['catalog_item_ids'] ?? [], 'tenant_item_ids' => $data['tenant_item_ids'] ?? []],
+            [
+                'catalog_item_ids' => $data['catalog_item_ids'] ?? [],
+                'funcionario_item_ids' => $data['funcionario_item_ids'] ?? [],
+            ],
             $request->user(),
         );
 
@@ -291,8 +311,16 @@ class NcDocumentController extends Controller
         return back()->with('success', 'Documento '.$document->code.' reaberto para edição.');
     }
 
+    /**
+     * ⚠️ TEMPORÁRIO — SOMENTE `local`/`testing`. Hard delete do documento (itens,
+     * vínculos e arquivos órfãos). Em PRODUÇÃO documento NÃO é excluído
+     * (histórico/auditoria). Remover método + rota + botões antes do deploy
+     * (checklist em `.ai/rules/decisions.md`, Fase 11).
+     */
     public function destroy(Request $request, NcDocument $document): RedirectResponse
     {
+        abort_unless(app()->environment('local', 'testing'), 404);
+
         $this->assertSameTenant($document);
 
         if (! $request->user()->canDelete()) {
@@ -454,14 +482,14 @@ class NcDocumentController extends Controller
             $existing = $document->items()->get();
 
             $existingSigs = $existing
-                ->map(fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id))
+                ->map(fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id, $entry->funcionario_item_id))
                 ->all();
 
             $sort = (int) $document->items()->max('sort_order') + 1;
             $added = 0;
 
             foreach ($this->resolveSelection(array_map('intval', $ids), [], $tenantId) as $row) {
-                $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id);
+                $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id, $row['funcionario_item']?->id);
 
                 if (in_array($signature, $existingSigs, true)) {
                     continue;
@@ -609,8 +637,9 @@ class NcDocumentController extends Controller
 
     /**
      * Valida a seleção de itens (seções e sub-itens dos catálogos NORMATIVO —
-     * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10), os sub-itens
-     * INDIVIDUAIS por funcionário (item 4) e os arquivos da biblioteca opcionais.
+     * Cronograma de Adequação — e OPERACIONAL — Prontuário NR-10), os itens
+     * INDIVIDUAIS de documentação de cada funcionário e os arquivos da biblioteca
+     * opcionais.
      */
     protected function validateSelection(Request $request): array
     {
@@ -628,25 +657,11 @@ class NcDocumentController extends Controller
                     Source::Prontuario->value,
                 ]),
             ],
-            'tenant_item_ids' => ['sometimes', 'array'],
-            'tenant_item_ids.*' => [
+            'funcionario_item_ids' => ['sometimes', 'array'],
+            'funcionario_item_ids.*' => [
                 'required',
                 'integer',
-                function ($attribute, $value, $fail) use ($tenantId) {
-                    $valid = TenantItem::query()
-                        ->where('id', $value)
-                        ->where('tenant_id', $tenantId)
-                        ->whereNotNull('funcionario_id')
-                        ->whereHas('catalogItem', fn ($q) => $q
-                            ->where('source', Source::Prontuario->value)
-                            ->where('n1', 4)
-                            ->where('is_section', false))
-                        ->exists();
-
-                    if (! $valid) {
-                        $fail('Foi enviado um sub-item de funcionário inválido (item 4 do prontuário).');
-                    }
-                },
+                Rule::exists('funcionario_items', 'id')->where('tenant_id', $tenantId),
             ],
             // Cópias do documento sem vínculo com o catálogo (avulsas) entram no
             // form apenas para serem PRESERVADAS: a seleção do picker não as derruba.
@@ -659,9 +674,9 @@ class NcDocumentController extends Controller
             ],
         ]);
 
-        if (empty($data['catalog_item_ids'] ?? []) && empty($data['tenant_item_ids'] ?? [])) {
+        if (empty($data['catalog_item_ids'] ?? []) && empty($data['funcionario_item_ids'] ?? [])) {
             throw ValidationException::withMessages([
-                'catalog_item_ids' => 'Selecione ao menos um item (normativo/operacional) ou sub-item de funcionário.',
+                'catalog_item_ids' => 'Selecione ao menos um item (normativo/operacional) ou item de funcionário.',
             ]);
         }
 
@@ -670,19 +685,19 @@ class NcDocumentController extends Controller
 
     /**
      * Reescreve a seleção do documento via UPSERT por assinatura:
-     *  - sub-item de funcionário (item 4): assinatura pelo tenant_item_id exato;
+     *  - item de documentação de funcionário: assinatura pelo funcionario_item_id exato;
      *  - seção (capa, sem linha de trabalho): assinatura pelo catalog_item_id;
      *  - sub-item genérico: assinatura pela linha de trabalho do catálogo
      *    (firstOrCreate por tenant + catalog_item).
      * Itens que ficam na seleção PRESERVAM o estado POR DOCUMENTO (ids estáveis);
      * itens novos são inicializados a partir do estado atual do TenantItem.
      */
-    protected function syncItems(NcDocument $document, array $catalogItemIds, array $tenantItemIds, int $tenantId, array $preserveItemIds = []): void
+    protected function syncItems(NcDocument $document, array $catalogItemIds, array $funcionarioItemIds, int $tenantId, array $preserveItemIds = []): void
     {
         $existing = $document->items()->get();
 
-        $selectedBySignature = collect($selection = $this->resolveSelection($catalogItemIds, $tenantItemIds, $tenantId))
-            ->keyBy(fn ($row) => $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id));
+        $selectedBySignature = collect($selection = $this->resolveSelection($catalogItemIds, $funcionarioItemIds, $tenantId))
+            ->keyBy(fn ($row) => $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id, $row['funcionario_item']?->id));
 
         // Cópias do documento sem vínculo com o catálogo (avulsas) são passadas
         // pelo form apenas para serem PRESERVADAS — a seleção do picker não as derruba.
@@ -694,7 +709,7 @@ class NcDocumentController extends Controller
 
         $removed = $existing->filter(
             fn (NcDocumentItem $entry) => ! in_array($entry->id, $preservedIds, true)
-                && ! $selectedBySignature->has($this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id)),
+                && ! $selectedBySignature->has($this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id, $entry->funcionario_item_id)),
         );
 
         foreach ($removed as $entry) {
@@ -703,13 +718,13 @@ class NcDocumentController extends Controller
         }
 
         $keyed = $existing->keyBy(
-            fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id),
+            fn (NcDocumentItem $entry) => $this->entrySignature($entry->catalog_item_id ?? 0, $entry->tenant_item_id, $entry->funcionario_item_id),
         );
 
         $sort = 0;
 
         foreach ($selection as $row) {
-            $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id);
+            $signature = $this->entrySignature($row['catalog_item_id'], $row['tenant_item']?->id, $row['funcionario_item']?->id);
             $entry = $keyed->get($signature);
 
             if ($entry) {
@@ -727,6 +742,7 @@ class NcDocumentController extends Controller
                 $document->items()->create(array_merge([
                     'catalog_item_id' => $row['catalog_item_id'],
                     'tenant_item_id' => $row['tenant_item']?->id,
+                    'funcionario_item_id' => $row['funcionario_item']?->id,
                     'code' => $row['code'] ?? null,
                     'title' => $row['title'] ?? null,
                     'source' => $row['source'] ?? null,
@@ -747,10 +763,10 @@ class NcDocumentController extends Controller
 
     /**
      * Resolve a seleção enviada em pares estáveis (catalog_item, tenant_item):
-     * itens de catálogo (seções e sub-itens genéricos, com preferência ao item 4
-     * de funcionário) seguidos dos sub-itens individuais de funcionário.
+     * itens de catálogo (seções e sub-itens genéricos) seguidos dos itens de
+     * documentação dos funcionários.
      */
-    protected function resolveSelection(array $catalogItemIds, array $tenantItemIds, int $tenantId): array
+    protected function resolveSelection(array $catalogItemIds, array $funcionarioItemIds, int $tenantId): array
     {
         $rows = [];
 
@@ -767,20 +783,7 @@ class NcDocumentController extends Controller
             $tenantItem = null;
 
             if (! $catalog->is_section) {
-                $query = TenantItem::query()
-                    ->where('tenant_id', $tenantId)
-                    ->where('catalog_item_id', $catalogItemId);
-
-                // Item 4 do prontuário é por funcionário: quando há sub-itens
-                // de funcionários, o documento trabalha sobre o registro daquele
-                // funcionário (senão cai no registro genérico / cria novo).
-                $isProntuario4 = $catalog->source === Source::Prontuario && (int) $catalog->n1 === 4;
-
-                $tenantItem = $isProntuario4
-                    ? $query->whereNotNull('funcionario_id')->orderBy('funcionario_id')->first()
-                    : $query->first();
-
-                $tenantItem ??= TenantItem::firstOrCreate(
+                $tenantItem = TenantItem::firstOrCreate(
                     ['tenant_id' => $tenantId, 'catalog_item_id' => $catalogItemId],
                     ['code' => $catalog->code, 'title' => $catalog->title, 'source' => $catalog->source->value],
                 );
@@ -789,6 +792,7 @@ class NcDocumentController extends Controller
             $rows[] = [
                 'catalog_item_id' => (int) $catalogItemId,
                 'tenant_item' => $tenantItem,
+                'funcionario_item' => null,
                 // Cópia congelada: garante que o documento não depende do catálogo.
                 'code' => $tenantItem?->code ?? $catalog->code,
                 'title' => $tenantItem?->title ?? $catalog->title,
@@ -796,28 +800,28 @@ class NcDocumentController extends Controller
             ];
         }
 
-        $selectedTenantIds = array_values(array_unique(array_map('intval', $tenantItemIds)));
-        $tenantItems = TenantItem::query()
-            ->with('catalogItem')
-            ->whereIn('id', $selectedTenantIds)
+        $selectedFuncionarioItemIds = array_values(array_unique(array_map('intval', $funcionarioItemIds)));
+        $funcionarioItems = FuncionarioItem::query()
+            ->with('funcionario')
+            ->whereIn('id', $selectedFuncionarioItemIds)
             ->where('tenant_id', $tenantId)
-            ->whereNotNull('funcionario_id')
             ->get()
             ->keyBy('id');
 
-        foreach ($selectedTenantIds as $tenantItemId) {
-            $tenantItem = $tenantItems->get($tenantItemId);
+        foreach ($selectedFuncionarioItemIds as $funcionarioItemId) {
+            $funcionarioItem = $funcionarioItems->get($funcionarioItemId);
 
-            if (! $tenantItem) {
+            if (! $funcionarioItem) {
                 continue;
             }
 
             $rows[] = [
-                'catalog_item_id' => (int) $tenantItem->catalog_item_id,
-                'tenant_item' => $tenantItem,
-                'code' => $tenantItem->code ?? $tenantItem->catalogItem?->code,
-                'title' => $tenantItem->title ?? $tenantItem->catalogItem?->title,
-                'source' => $tenantItem->source?->value ?? $tenantItem->catalogItem?->source?->value,
+                'catalog_item_id' => null,
+                'tenant_item' => null,
+                'funcionario_item' => $funcionarioItem,
+                'code' => 'FUNC-'.$funcionarioItem->numero,
+                'title' => $funcionarioItem->funcionario?->nome.': '.$funcionarioItem->titulo,
+                'source' => Source::Prontuario->value,
             ];
         }
 
@@ -828,8 +832,12 @@ class NcDocumentController extends Controller
      * Assinatura estável de um item no documento: pela linha de trabalho
      * (tenant_item) quando houver; senão pelo item de catálogo (seções/capa).
      */
-    protected function entrySignature(int $catalogItemId, ?int $tenantItemId): string
+    protected function entrySignature(?int $catalogItemId, ?int $tenantItemId, ?int $funcionarioItemId = null): string
     {
+        if ($funcionarioItemId) {
+            return 'f:'.$funcionarioItemId;
+        }
+
         if ($tenantItemId) {
             return 't:'.$tenantItemId;
         }

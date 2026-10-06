@@ -19,6 +19,10 @@
                     {{ $source->label() }}
                 </a>
             @endforeach
+            <a class="btn btn-sm {{ $activeSource === 'funcionarios' ? 'btn' : 'btn-secondary' }}"
+               href="{{ route('documentos.index', ['source' => 'funcionarios']) }}">
+                Funcionários
+            </a>
         </div>
 
         @if($documents->isEmpty())
@@ -27,25 +31,29 @@
             <div class="table-wrap">
                 <table class="grid docs-grid" style="table-layout:fixed">
                     <colgroup>
-                        <col style="width:16%">
-                        <col style="width:10%">
-                        <col style="width:17%">
-                        <col style="width:13%">
-                        <col style="width:10%">
+                        <col style="width:24%">
                         <col style="width:12%">
-                        <col style="width:6%">
-                        <col style="width:16%">
+                        <col style="width:12%">
+                        <col style="width:15%">
+                        <col style="width:11%">
+                        <col style="width:8%">
+                        <col style="width:11%">
+                        @if($canHardDelete)
+                            <col style="width:7%">
+                        @endif
                     </colgroup>
                     <thead>
                         <tr>
                             <th>Arquivo</th>
                             <th>Módulo</th>
                             <th>Item</th>
-                            <th style="white-space:normal">Documento de referência</th>
-                            <th>Enviado por</th>
-                            <th>Enviado em</th>
-                            <th>Tamanho</th>
-                            <th class="text-right">Ação</th>
+                            <th style="white-space:normal">Documento</th>
+                            <th>Enviado</th>
+                            <th>Situação</th>
+                            <th>Validade</th>
+                            @if($canHardDelete)
+                                <th></th>
+                            @endif
                         </tr>
                     </thead>
                     <tbody>
@@ -56,30 +64,32 @@
                                        style="display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
                                         {{ $doc->displayName() }}
                                     </a>
-                                </td>
-                                <td>
-                                    @php($source = $doc->tenantItem->catalogItem->source ?? null)
-                                    @if($source)
-                                        @php($moduleLabels = ['cronograma' => 'Cronograma', 'prontuario' => 'Prontuário', 'checklist' => 'Checklist'])
-                                        <span class="badge {{ $source->value === 'cronograma' ? 'badge-blue' : ($source->value === 'prontuario' ? 'badge-green' : 'badge-neutral') }}">
-                                            {{ $moduleLabels[$source->value] ?? $source->label() }}
-                                        </span>
-                                    @else
-                                        <span class="muted">—</span>
+                                    @if($doc->description)
+                                        <span class="muted small" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                                              title="{{ $doc->description }}">{{ $doc->description }}</span>
                                     @endif
                                 </td>
                                 <td>
-                                    @if($doc->relatedItems()->isNotEmpty())
+                                    @php($moduleLabels = ['cronograma' => 'Cronograma', 'prontuario' => 'Prontuário', 'checklist' => 'Checklist', 'funcionarios' => 'Funcionários'])
+                                    <span class="badge badge-blue">
+                                        {{ $moduleLabels[$doc->modulo()] ?? $doc->modulo() }}
+                                    </span>
+                                </td>
+                                <td>
+                                    @php($relatedItems = $doc->relatedItems())
+                                    @php($relatedFuncionario = $doc->funcionarioItem)
+                                    @if($relatedItems->isNotEmpty() || $relatedFuncionario)
                                         <div style="display:flex;flex-wrap:wrap;gap:4px">
-                                            @foreach($doc->relatedItems() as $item)
-                                                <span class="badge {{ ['badge-green', 'badge-amber', 'badge-setor', 'badge-neutral'][$loop->index % 4] }}"
+                                            @foreach($relatedItems as $item)
+                                                <span class="badge badge-blue-alt"
                                                       title="{{ $item->code }} — {{ $item->description ?? '' }}">
                                                     {{ $item->code }}
                                                 </span>
                                             @endforeach
-                                            @if($doc->tenantItem?->funcionario_id)
-                                                <span class="badge badge-neutral" title="Evidência do sub-item 4.x do funcionário">
-                                                    Func: {{ $doc->tenantItem->funcionario->nome }}
+                                            @if($relatedFuncionario)
+                                                <span class="badge badge-blue-alt"
+                                                      title="{{ $relatedFuncionario->funcionario?->nome }} — {{ $relatedFuncionario->titulo }}">
+                                                    {{ $relatedFuncionario->funcionario?->nome }}
                                                 </span>
                                             @endif
                                         </div>
@@ -106,20 +116,50 @@
                                         <span class="muted">—</span>
                                     @endif
                                 </td>
-                                <td>{{ $doc->uploader?->name ?? '—' }}</td>
-                                <td>{{ $doc->created_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</td>
-                                <td>{{ $doc->humanSize() }}</td>
-                                <td class="text-right">
-                                    <a class="btn btn-sm btn-secondary" href="{{ route('documentos.download', $doc) }}">Baixar</a>
-                                    @if(auth()->user()->canDeleteEvidence())
+                                <td>{{ $doc->created_at->format('d/m/Y H:i') }}</td>
+                                <td>
+                                    @php($situacoes = $doc->documents
+                                        ->merge($referencing->get($doc->tenant_item_id, collect()))
+                                        ->unique('id')
+                                        ->pluck('status')
+                                        ->filter()
+                                        ->unique()
+                                        ->map(fn ($status) => $status instanceof \App\Enums\DocumentStatus
+                                            ? $status->label()
+                                            : (\App\Enums\DocumentStatus::tryFrom($status)?->label() ?? $status)))
+                                    @if($situacoes->isNotEmpty())
+                                        <div class="setores-mini">
+                                            @foreach($situacoes as $situacao)
+                                                <span class="badge badge-blue-alt">{{ $situacao }}</span>
+                                            @endforeach
+                                        </div>
+                                    @else
+                                        <span class="muted">—</span>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($doc->validade)
+                                        @php($days = $doc->daysUntilExpiry())
+                                        <span class="badge {{ $days !== null && $days <= 30 ? 'badge-red' : 'badge-blue-alt' }}">
+                                            {{ $doc->validade->format('d/m/Y') }}
+                                            @if($days !== null)
+                                                <span class="muted">· {{ $days >= 0 ? $days.' dias' : 'vencido' }}</span>
+                                            @endif
+                                        </span>
+                                    @else
+                                        <span class="muted">—</span>
+                                    @endif
+                                </td>
+                                @if($canHardDelete)
+                                    <td class="text-right" style="white-space:nowrap">
                                         <form method="POST" action="{{ route('documentos.destroy', $doc) }}"
-                                              data-confirm="Excluir este documento?" style="display:inline">
+                                              data-confirm="Excluir definitivamente o arquivo {{ $doc->displayName() }}? Esta ação não pode ser desfeita.">
                                             @csrf
                                             @method('DELETE')
                                             <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
                                         </form>
-                                    @endif
-                                </td>
+                                    </td>
+                                @endif
                             </tr>
                         @endforeach
                     </tbody>

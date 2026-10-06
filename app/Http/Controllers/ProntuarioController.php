@@ -5,9 +5,9 @@ namespace App\Http\Controllers;
 use App\Enums\Source;
 use App\Models\CatalogItem;
 use App\Models\Evidence;
-use App\Models\Funcionario;
 use App\Models\TenantItem;
 use App\Support\CronogramaOptions;
+use App\Support\EvidenciaUploadService;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -44,25 +44,14 @@ class ProntuarioController extends Controller
 
         $averages = [];
         foreach ($tree as $branch) {
-            $scope = $branch->section->n1 === 4 ? 'any' : null;
-            $averages[$branch->section->n1] = TenantItem::averagePercent($tenantId, Source::Prontuario->value, $branch->section->n1, $scope);
+            $averages[$branch->section->n1] = TenantItem::averagePercent($tenantId, Source::Prontuario->value, $branch->section->n1);
         }
-
-        // Item 4 no grid do prontuário: cada funcionário com seus sub-itens 4.x
-        // (evidências, status e percentual próprios — "1 funcionário → N subitens").
-        $funcionarios = Funcionario::query()
-            ->where('tenant_id', $tenantId)
-            ->with(['prontuarioItems' => fn ($q) => $q->orderBy('catalog_item_id')->withCount('evidences')])
-            ->orderBy('nome')
-            ->get();
 
         return view('prontuario.index', [
             'tree' => $tree,
             'map' => $map,
             'avulso' => $avulso,
             'averages' => $averages,
-            'funcionariosTotal' => Funcionario::query()->where('tenant_id', $tenantId)->count(),
-            'funcionarios' => $funcionarios,
             'canWrite' => request()->user()->canWrite(),
         ]);
     }
@@ -74,7 +63,7 @@ class ProntuarioController extends Controller
             abort(403);
         }
 
-        $item->load(['catalogItem', 'evidences.uploader', 'funcionario']);
+        $item->load(['catalogItem', 'evidences.uploader']);
 
         return view('prontuario.show', [
             'item' => $item,
@@ -97,11 +86,24 @@ class ProntuarioController extends Controller
             'condicao_inicial' => ['nullable', 'string', 'max:30', Rule::in(CronogramaOptions::condicoesIniciais())],
             'criticidade' => ['nullable', 'string', Rule::in(CronogramaOptions::criticidades())],
             'data_realizacao' => ['nullable', 'date'],
+            'validade_aplica' => ['nullable', 'boolean'],
             'data_validade' => ['nullable', 'date'],
             'percentual' => ['nullable', 'numeric', 'min:0', 'max:100'],
             'comentarios' => ['nullable', 'string'],
             'prazo_execucao' => ['nullable', 'date'],
         ]);
+
+        // Checkbox "Se aplica" é a fonte da verdade do campo: desmarcado
+        // limpa a data, marcado exige a data.
+        $data['validade_aplica'] = $request->boolean('validade_aplica');
+
+        if ($data['validade_aplica'] && empty($data['data_validade'])) {
+            throw ValidationException::withMessages([
+                'data_validade' => 'Informe a data de validade ou desmarque "Se aplica".',
+            ]);
+        }
+
+        $data['data_validade'] = $data['validade_aplica'] ? $data['data_validade'] : null;
 
         $item->fill($data);
         $item->updated_by = $request->user()->id;
@@ -121,25 +123,20 @@ class ProntuarioController extends Controller
 
         $request->validate([
             'evidence' => ['required', 'file', 'max:20480'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'validade' => ['nullable', 'date'],
         ]);
 
-        $file = $request->file('evidence');
-        $this->guardSafeFile($file);
+        EvidenciaUploadService::storeForTenantItem(
+            $request->file('evidence'),
+            $item,
+            $request->user(),
+            $request->filled('description') ? $request->string('description')->toString() : null,
+            EvidenciaUploadService::resolveValidade($request),
+            EvidenciaUploadService::MODULO_PRONTUARIO,
+        );
 
-        $stored = $file->store('evidences/tenant-'.$tenantId, ['disk' => 'local']);
-
-        Evidence::create([
-            'tenant_id' => $tenantId,
-            'tenant_item_id' => $item->id,
-            'uploaded_by' => $request->user()->id,
-            'original_name' => $file->getClientOriginalName(),
-            'stored_path' => $stored,
-            'disk' => 'local',
-            'mime_type' => $file->getMimeType(),
-            'size_bytes' => $file->getSize(),
-        ]);
-
-        return back()->with('success', 'Evidência anexada com sucesso.');
+        return back()->with('success', 'Evid�ncia anexada com sucesso.');
     }
 
     public function destroyEvidence(Request $request, Evidence $evidence): RedirectResponse

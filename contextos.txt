@@ -1,0 +1,52 @@
+HIERARQUIA DE CONTEXTOS (mais especifico -> mais generico)
+
+1. CONTEXTO DE ARQUIVO/VIZINHANCA (MAIS ESPECIFICO) - OBRIGATORIO
+   - Arquivos irmaos (siblings): sempre antes de criar/editar. Captura convencoes reais.
+   - Mesma pasta: veja padroes do modulo (UX, estados, badges, permissoes).
+   - Rotas relacionadas (routes/web.php): evita rotas fora do padrao e nomes inconsistentes.
+   - Models relacionados (app/Models/*): garante multi-tenancy, $fillable, casts, scopes.
+   - Testes do modulo (tests/Feature/*ModuleTest.php, tests/Unit/*): contrato esperado (nao quebrar).
+
+Regra: Nunca crie do zero sem olhar pelo menos 1-2 arquivos irmaos do mesmo modulo.
+
+2. REGRAS DO PROJETO (.ai/rules) - OBRIGATORIO ANTES DE PLANEJAR/CODAR
+   - Mapeamento (index.md): abra SEMPRE primeiro para paths em escopo. Indica quais .md cobrem o caminho (globs).
+   - Regras por caminho: leia TODOS os arquivos listados no index.md cujo glob cobre o escopo (decisoes, armadilhas, convencoes por area).
+   - Busca por palavra-chave: grep -rin 'keyword' .ai/rules para termos relevantes (tenant, funcionario, evidencia, RNC, validade, ativo). Obrigatorio pelo Boost.
+
+Regra Boost: antes de plan/edit, leia index.md + todos os .md com glob cobrindo o escopo + grep por termos relevantes. So depois codificar.
+
+3. ARQUITETURA E DECISOES (RESTRICOES SISTEMICAS)
+   - Arquitetura (.ai/rules/architecture.md): altera modulos, dominios, limites, multi-tenancy, migracoes. Ex.: Funcionario standalone (nao vinculado a Prontuario).
+   - Decisoes (.ai/rules/decisions.md): reverter, remover, unificar, mexer em legado. Preserva baseline (8e1a829, deployed-prod) e evita caminhos rejeitados.
+
+4. DOMINIO COMPARTILHADO (CROSS-CUTTING)
+   - Multi-tenancy (App\Support\TenantContext, scopes): toda query/criacao/listagem/filtro/migration por tenant. Validar tenant_id === TenantContext::id() quando aplicavel.
+   - Auditoria (App\Support\Audit): acoes administrativas (desativar/reativar, excluir, mudancas relevantes).
+   - Permissoes/Policies (User, Gates): escrita, gestao (Admin/SuperAdmin), exclusao (canWrite(), isAdmin(), canDeleteEvidence()).
+   - Upload/Evidencias (App\Support\EvidenciaUploadService, Evidence*): anexos, validade com "Se aplica", biblioteca.
+   - Helpers/Support (app/Support/*): prefira existentes (CPF, datas, formatacao).
+
+5. CONVENCOES LARAVEL (FRAMEWORK) - GENERICO (so se nao achar resposta 1-4)
+   - Laravel Core (laravel/core rules): artisan make:*, rotas nomeadas, Eloquent Resources, Vite. Prefira padrao existente.
+   - PHP (php rules): tipagem, constructor promotion, PHPDoc, Enums (PHP 8.3).
+   - Pint (pint/core rules): apos modificar PHP -> vendor/bin/pint --dirty --format agent.
+   - PHPUnit (phpunit/core rules + testing-best-practices skill): criar/ajustar testes, menor conjunto que cobre alteracao.
+   - Blade/Tailwind (tailwindcss-development skill): apenas UI/Blade com classes Tailwind.
+
+6. DOCUMENTACAO/ECOSYSTEM (MAIS GENERICO) - SOB DEMANDA
+   - Laravel Docs (search-docs Boost MCP): so com duvida real de API/version-specific. Conferir composer show --direct antes.
+   - Skills: ativar somente quando tarefa bater exatamente com descricao (ex.: infer-conventions so sob pedido explicito). Nao por precaucao.
+
+FLUXO PRATICO POR TIPO DE ALTERACAO
+
+- Controller/View/Route (modulo): 1. irmaos -> 2. .ai/rules/index.md + regras dos paths (Controllers/Views/Routes) -> 3. architecture+decisions -> 4. dominio compartilhado + 5. testes modulo
+- Migration/Schema (database/migrations): 1. migrations existentes -> 2. regras paths migrations -> 3. architecture (multi-tenancy/legado) -> 4. Models afetados
+- Models/Relacionamentos (app/Models): 1. irmaos+traits -> 2. regras paths Models -> 3. architecture (multi-tenancy/standalone) -> 4. TenantContext
+- RNC/NcDocument (NcDocument*, nc-documents views): 1. NcDocumentController, _selection -> 2. regras desses paths -> 3. architecture+decisions (nc_document_item_id, evitar vinculos fixos) -> 4. Funcionario (standalone)
+- Evidencias/Uploads (EvidenciaUploadService, partials/evidences, Evidence): 1. arquivos relacionados -> 2. regras -> 3. dominio compartilhado -> 4. architecture (nao exclusao/standalone)
+- Testes: 1. teste existente do modulo -> 2. testing-best-practices + phpunit -> 3. regras p/ testes -> 4. codigo sob teste
+- Mudanca ampla (cross-cutting): 1. paths afetados -> 2. TODOS rules cobrindo globs (.ai/rules/index.md) -> 3. architecture+decisions -> 4. dominio compartilhado -> 5. Boost rules
+
+REGRA DE OURO: Do mais especifico (arquivos irmaos + regras por glob do path) ao mais generico (framework/Boost) SOMENTE quando nao houver resposta nos niveis anteriores.
+Ponto de partida inegociavel: .ai/rules/index.md + arquivos irmaos. Isso garante consistencia real (nao teorica).

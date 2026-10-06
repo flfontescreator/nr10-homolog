@@ -59,13 +59,18 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | REGRA DO PROJETO (ver `.ai/rules/architecture.md` → Fuso horário):
+    | tudo — código, telas, nomes de arquivo, PDF, e-mail e job — tem que
+    | refletir o fuso -03:00 do Brasil (Brasília/São Paulo).
+    |
+    | Fixo no config, sem `env()`: o Brasil não tem horário de verão desde
+    | 2019 e um override por `.env` já quebrou a data gravada no nome dos
+    | arquivos anexados. `now()`, `today()`, casts de data e `date_default_timezone`
+    | passam a sair em -03:00 sem nenhuma conversão manual.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => 'America/Sao_Paulo',
 
     /*
     |--------------------------------------------------------------------------

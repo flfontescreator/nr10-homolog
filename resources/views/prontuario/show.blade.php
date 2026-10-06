@@ -11,12 +11,9 @@
             </h1>
             <p class="subtitle">
                 {{ $item->display_title }}
-                @if($item->funcionario)
-                    <span class="badge badge-blue">Funcionário: {{ $item->funcionario->nome }}</span>
-                @endif
             </p>
         </div>
-        <a class="btn btn-secondary" href="{{ $item->funcionario ? route('funcionarios.show', $item->funcionario) : route('prontuario.index') }}">← Voltar</a>
+        <a class="btn btn-secondary" href="{{ route('prontuario.index') }}">← Voltar</a>
     </div>
 
     <div class="card">
@@ -61,7 +58,19 @@
                     </div>
                     <div class="form-group">
                         <label>Validade do documento</label>
-                        <input type="date" name="data_validade" value="{{ $item->data_validade?->format('Y-m-d') }}">
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                            <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin:0">
+                                <input type="checkbox" name="validade_aplica" value="1"
+                                       id="validade-aplica"
+                                       @checked(old('validade_aplica', $item->validade_aplica))
+                                       onchange="toggleValidade()">
+                                Se aplica
+                            </label>
+                            <input type="date" name="data_validade" id="validade-campo"
+                                   value="{{ old('data_validade', $item->data_validade?->format('Y-m-d')) }}"
+                                   @disabled(! old('validade_aplica', $item->validade_aplica))>
+                        </div>
+                        <div class="field-hint">Desmarque quando este documento não tiver validade.</div>
                     </div>
                     <div class="form-group">
                         <label>Percentual (0 a 100)</label>
@@ -95,6 +104,14 @@
             </dl>
         @endif
     </div>
+
+    <script>
+        // "Se aplica" habilita/desabilita o campo de validade.
+        function toggleValidade() {
+            document.getElementById('validade-campo').disabled = !document.getElementById('validade-aplica').checked;
+        }
+        toggleValidade();
+    </script>
 
     @include('partials.evidences', [
         'item' => $item,

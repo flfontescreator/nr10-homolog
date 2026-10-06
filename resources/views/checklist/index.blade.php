@@ -74,7 +74,7 @@
                                     @endif
                                 </td>
                                 <td>{{ $document->creator?->name ?: '—' }}</td>
-                                <td>{{ $document->updated_at?->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') ?: '—' }}</td>
+                                <td>{{ $document->updated_at?->format('d/m/Y H:i') ?: '—' }}</td>
                                 <td class="text-right" style="white-space:nowrap">
                                     <button class="btn btn-sm" form="doc-open-{{ $document->id }}">Abrir</button>
                                     <form id="doc-open-{{ $document->id }}" method="GET" action="{{ route('nc-documents.show', $document) }}" class="inline">
@@ -96,9 +96,9 @@
                                             @csrf
                                         </form>
                                     @endif
-                                    @if($canDelete)
+                                    @if($canHardDelete)
                                         <button class="btn btn-sm btn-danger" form="doc-delete-{{ $document->id }}"
-                                                onclick="return confirm('Excluir o {{ $document->code }}? O histórico e os vínculos serão removidos.')">Excluir</button>
+                                                onclick="return confirm('TEMP (teste): excluir definitivamente o {{ $document->code }}? O histórico e os vínculos serão removidos.')">Excluir (teste)</button>
                                         <form id="doc-delete-{{ $document->id }}" method="POST" action="{{ route('nc-documents.destroy', $document) }}" class="inline">
                                             @csrf
                                             @method('DELETE')

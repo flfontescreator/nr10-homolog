@@ -8,6 +8,7 @@ use App\Models\NcDocument;
 use App\Models\NcDocumentItem;
 use App\Models\TenantItem;
 use App\Support\ChecklistOptions;
+use App\Support\EvidenciaUploadService;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -55,7 +56,19 @@ class ChecklistController extends Controller
             'documentSources' => $documentSources,
             'canWrite' => request()->user()->canWrite(),
             'canDelete' => request()->user()->canDelete(),
+            // TEMPORÁRIO: hard delete de documento só aparece em local/testing.
+            'canHardDelete' => $this->canHardDelete(),
         ]);
+    }
+
+    /**
+     * TEMPORÁRIO: exclusão definitiva de documento liberada só em
+     * `local`/`testing` (limpeza de base de teste). Em produção documento NÃO
+     * é excluído. Ver `.ai/rules/decisions.md` (Fase 11).
+     */
+    protected function canHardDelete(): bool
+    {
+        return app()->environment('local', 'testing') && request()->user()->canDelete();
     }
 
     public function show(Request $request, TenantItem $item): View|RedirectResponse
@@ -130,23 +143,18 @@ class ChecklistController extends Controller
 
         $request->validate([
             'evidence' => ['required', 'file', 'max:20480'],
+            'description' => ['nullable', 'string', 'max:255'],
+            'validade' => ['nullable', 'date'],
         ]);
 
-        $file = $request->file('evidence');
-        $this->guardSafeFile($file);
-
-        $stored = $file->store('evidences/tenant-'.$tenantId, ['disk' => 'local']);
-
-        Evidence::create([
-            'tenant_id' => $tenantId,
-            'tenant_item_id' => $item->id,
-            'uploaded_by' => $request->user()->id,
-            'original_name' => $file->getClientOriginalName(),
-            'stored_path' => $stored,
-            'disk' => 'local',
-            'mime_type' => $file->getMimeType(),
-            'size_bytes' => $file->getSize(),
-        ]);
+        EvidenciaUploadService::storeForTenantItem(
+            $request->file('evidence'),
+            $item,
+            $request->user(),
+            $request->filled('description') ? $request->string('description')->toString() : null,
+            EvidenciaUploadService::resolveValidade($request),
+            EvidenciaUploadService::MODULO_RNC,
+        );
 
         return back()->with('success', 'Evidência anexada com sucesso.');
     }

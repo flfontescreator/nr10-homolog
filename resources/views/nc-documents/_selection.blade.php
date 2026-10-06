@@ -5,8 +5,8 @@
 @php($oldSelected = is_array($oldSelected) ? $oldSelected : [])
 @php($library = $library ?? collect())
 @php($funcionarios = $funcionarios ?? collect())
-@php($oldTenantSelected = old('tenant_item_ids', $selectedTenantItemIds ?? []))
-@php($oldTenantSelected = is_array($oldTenantSelected) ? $oldTenantSelected : [])
+@php($oldFuncionarioSelected = old('funcionario_item_ids', $selectedFuncionarioItemIds ?? []))
+@php($oldFuncionarioSelected = is_array($oldFuncionarioSelected) ? $oldFuncionarioSelected : [])
 @php($oldEvidenceIds = old('evidence_ids', $selectedEvidenceIds ?? []))
 @php($oldEvidenceIds = is_array($oldEvidenceIds) ? $oldEvidenceIds : [])
 @php($funcionarioBackParams = ($document ?? null)
@@ -133,60 +133,70 @@
                         </label>
 
                         <div id="section-{{ $section->id }}" class="pick-children" style="display:grid;gap:6px;margin:6px 0 0 26px">
-                            @if((int) $section->n1 === 4)
-                                {{-- Item 4 é por funcionário: cada sub-item individual com evidência própria. --}}
-                                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0">
-                                    <p class="muted" style="margin:0">
-                                        O item 4 é por funcionário — marque os sub-itens individuais de cada funcionário que entram
-                                        neste documento. Cada sub-item carrega a evidência daquele funcionário.
-                                    </p>
-                                    <a class="btn btn-sm" href="{{ route('funcionarios.create', $funcionarioBackParams) }}">+ Cadastrar funcionário</a>
-                                </div>
-                                @forelse($funcionarios as $funcionario)
-                                    <div style="border:1px solid #e2e2e2;border-radius:6px;padding:8px;margin-bottom:8px;background:#fbfbfb">
-                                        <strong>{{ $funcionario->nome }}</strong>
-                                        @if($funcionario->matricula)
-                                            <span class="badge badge-neutral">{{ $funcionario->matricula }}</span>
+                            @foreach($branch->children as $child)
+                                <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px">
+                                    <input type="checkbox" name="catalog_item_ids[]" value="{{ $child->id }}"
+                                           data-section-group="section-{{ $section->id }}"
+                                           @checked(in_array($child->id, $oldSelected, true))>
+                                    <span>
+                                        <strong>{{ $child->code }}</strong> — {{ $child->title }}
+                                        @if($child->criticidade)
+                                            <span class="badge {{ $child->criticidade === 'ALTA' ? 'badge-red' : 'badge-amber' }}">{{ $child->criticidade }}</span>
                                         @endif
-                                        <div style="display:grid;gap:6px;margin-top:6px">
-                                            @forelse($funcionario->prontuarioItems as $funcItem)
-                                                <label style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px;background:#fff">
-                                                    <input type="checkbox" name="tenant_item_ids[]" value="{{ $funcItem->id }}"
-                                                           @checked(in_array($funcItem->id, $oldTenantSelected, true))>
-                                                    <span style="flex:1">
-                                                        <strong>{{ $funcItem->catalogItem?->code }}</strong> — {{ $funcItem->catalogItem?->title }}
-                                                    </span>
-                                                    @php($funcStatus = $funcItem->evidencias_status)
-                                                    @if($funcStatus)
-                                                        <span class="badge {{ $funcStatus === 'Digital' ? 'badge-green' : 'badge-neutral' }}">{{ $funcStatus }}</span>
-                                                    @endif
-                                                </label>
+                                        <span class="setores-mini" style="margin-top:4px">
+                                            @forelse($child->setores_list as $setor)
+                                                <span class="badge badge-setor">{{ $setor }}</span>
                                             @empty
-                                                <span class="muted">Sem sub-itens cadastrados para este funcionário.</span>
-                                            @endforelse
-                                        </div>
-                                    </div>
-                                @empty
-                                    <p class="muted">Nenhum funcionário cadastrado ainda — use o botão acima para cadastrar e liberar os sub-itens do item 4.</p>
-                                @endforelse
-                            @else
-                                @foreach($branch->children as $child)
-                                    <label style="display:flex;gap:10px;align-items:flex-start;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px">
-                                        <input type="checkbox" name="catalog_item_ids[]" value="{{ $child->id }}"
-                                               data-section-group="section-{{ $section->id }}"
-                                               @checked(in_array($child->id, $oldSelected, true))>
-                                        <span>
-                                            <strong>{{ $child->code }}</strong> — {{ $child->title }}
-                                            <span class="setores-mini" style="margin-top:4px">
                                                 <span class="muted">—</span>
-                                            </span>
+                                            @endforelse
                                         </span>
-                                    </label>
-                                @endforeach
-                            @endif
+                                    </span>
+                                </label>
+                            @endforeach
                         </div>
                     </div>
                 @endforeach
+
+                {{-- Documentação de cada funcionário: itens próprios do módulo
+                     Funcionário, com evidência e situação próprias. --}}
+                <div class="pick-section" style="margin-top:14px">
+                    <p class="muted" style="margin:0 0 6px">
+                        A documentação dos funcionários é gerenciada no módulo
+                        <a href="{{ route('funcionarios.index') }}">Funcionários</a>. Marque aqui os
+                        itens que entram neste documento.
+                    </p>
+
+                    @forelse($funcionarios as $funcionario)
+                        <div style="border:1px solid #e2e2e2;border-radius:6px;padding:8px;margin-bottom:8px;background:#fbfbfb">
+                            <strong>{{ $funcionario->nome }}</strong>
+                            @if($funcionario->matricula)
+                                <span class="badge badge-neutral">{{ $funcionario->matricula }}</span>
+                            @endif
+                            <div style="display:grid;gap:6px;margin-top:6px">
+                                @forelse($funcionario->items as $funcItem)
+                                    <label style="display:flex;gap:10px;align-items:center;padding:6px 8px;border:1px solid #d9d9d9;border-radius:6px;background:#fff">
+                                        <input type="checkbox" name="funcionario_item_ids[]" value="{{ $funcItem->id }}"
+                                               @checked(in_array($funcItem->id, $oldFuncionarioSelected, true))>
+                                        <span style="flex:1">
+                                            <strong>Item {{ $funcItem->numero }}</strong> — {{ $funcItem->titulo }}
+                                        </span>
+                                        @if($funcItem->situacao)
+                                            <span class="badge badge-blue-alt">{{ $funcItem->situacao->nome }}</span>
+                                        @endif
+                                    </label>
+                                @empty
+                                    <span class="muted">Sem itens cadastrados para este funcionário.</span>
+                                @endforelse
+                            </div>
+                        </div>
+                    @empty
+                        <p class="muted">
+                            Nenhum funcionário cadastrado ainda —
+                            <a href="{{ route('funcionarios.create', $funcionarioBackParams) }}">cadastre um funcionário</a>
+                            para liberar os itens de documentação.
+                        </p>
+                    @endforelse
+                </div>
             </div>
         </div>
     </div>
@@ -257,7 +267,7 @@
     <script>
         function updateSelectedCount() {
             var checked = document.querySelectorAll(
-                'input[name="catalog_item_ids[]"]:checked, input[name="tenant_item_ids[]"]:checked'
+                'input[name="catalog_item_ids[]"]:checked, input[name="funcionario_item_ids[]"]:checked'
             ).length;
             var el = document.querySelector('[data-selected-count]');
             if (el) {
@@ -267,7 +277,7 @@
 
         document.addEventListener('change', function (e) {
             if (e.target && e.target.matches && e.target.matches(
-                'input[name="catalog_item_ids[]"], input[name="tenant_item_ids[]"]'
+                'input[name="catalog_item_ids[]"], input[name="funcionario_item_ids[]"]'
             )) {
                 updateSelectedCount();
             }

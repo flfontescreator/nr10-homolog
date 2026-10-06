@@ -9,6 +9,7 @@
             <p class="subtitle">Itens do prontuário (fixos) com situação das evidências, percentual e média geral calculada.</p>
         </div>
         @if($canWrite)
+            <a class="btn btn-secondary" href="{{ route('funcionarios.index') }}">Funcionários</a>
             <a class="btn btn-secondary" href="{{ route('prontuario.catalogo.index') }}">Gerenciar catálogo operacional</a>
         @endif
     </div>
@@ -60,10 +61,6 @@
                     <tbody>
                         @foreach($branch->children as $child)
                             @php($row = $map->get($child->id))
-                            @if($section->n1 === 4)
-                                {{-- Item 4 é gerenciado por funcionário; sub-itens 4.x por funcionário não aparecem aqui. --}}
-                                @continue
-                            @endif
                             <tr>
                                 <td><strong style="white-space:nowrap">{{ $child->code }}</strong></td>
                                 <td style="max-width:320px;overflow-wrap:anywhere;word-break:break-word">{{ $child->title }}</td>
@@ -104,91 +101,6 @@
                                 </td>
                             </tr>
                         @endforeach
-                        @if($section->n1 === 4)
-                            <tr>
-                                <td colspan="9">
-                                    @forelse($funcionarios as $funcionario)
-                                        @php($media = \App\Http\Controllers\FuncionarioController::averagePercent($funcionario))
-                                        <div style="margin-bottom:14px">
-                                            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-                                                <strong>{{ $funcionario->nome }}</strong>
-                                                @if($funcionario->matricula)
-                                                    <span class="badge badge-neutral">{{ $funcionario->matricula }}</span>
-                                                @endif
-                                                <span class="badge badge-blue">Média {{ $media !== null ? number_format($media, 0, ',', '.') . '%' : '—' }}</span>
-                                                <a class="btn btn-sm btn-secondary" href="{{ route('funcionarios.show', ['funcionario' => $funcionario, 'from' => 'prontuario']) }}">Abrir</a>
-                                            </div>
-                                            <div class="table-wrap" style="margin-top:6px">
-                                                <table class="grid docs-grid" style="table-layout:fixed">
-                                                        <colgroup>
-                                                            <col style="width:9%">
-                                                            <col style="width:43%">
-                                                            <col style="width:10%">
-                                                            <col style="width:14%">
-                                                            <col style="width:12%">
-                                                            <col style="width:12%">
-                                                        </colgroup>
-                                                        <thead>
-                                                            <tr>
-                                                                <th>Código</th>
-<th style="white-space:normal">Documento / não conformidade</th>
-                                                                <th>Evidências</th>
-                                                                <th>Status</th>
-                                                                <th>Percentual</th>
-                                                                <th class="text-right">Ação</th>
-                                                            </tr>
-                                                        </thead>
-                                                    <tbody>
-                                                        @forelse($funcionario->prontuarioItems as $funcItem)
-                                                            <tr>
-                                                                <td><strong>{{ $funcItem->catalogItem?->code }}</strong></td>
-                                                                <td style="max-width:340px;overflow-wrap:anywhere;word-break:break-word">{{ $funcItem->catalogItem?->title }}</td>
-                                                                <td>
-                                                                    <span class="badge {{ $funcItem->evidences_count > 0 ? 'badge-green' : 'badge-neutral' }}">
-                                                                        {{ $funcItem->evidences_count }}
-                                                                    </span>
-                                                                </td>
-                                                                <td>
-                                                                    @php($status = $funcItem->evidencias_status)
-                                                                    @if($status)
-                                                                        <span class="badge {{ $status === 'Digital' ? 'badge-green' : ($status === 'Pendente' ? 'badge-amber' : 'badge-neutral') }}">
-                                                                            {{ $status }}
-                                                                        </span>
-                                                                    @else
-                                                                        <span class="muted">—</span>
-                                                                    @endif
-                                                                </td>
-                                                                <td>
-                                                                    @if($funcItem->percentual !== null)
-                                                                        {{ number_format($funcItem->percentual, 0, ',', '.') }}%
-                                                                    @else
-                                                                        <span class="muted">—</span>
-                                                                    @endif
-                                                                </td>
-                                                                <td class="text-right" style="white-space:nowrap">
-                                                                    <a class="btn btn-sm" href="{{ route('prontuario.show', $funcItem) }}">
-                                                                        {{ $canWrite ? 'Editar' : 'Ver' }}
-                                                                    </a>
-                                                                </td>
-                                                            </tr>
-                                                        @empty
-                                                            <tr><td colspan="6" class="muted">Sem sub-itens ainda.</td></tr>
-                                                        @endforelse
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                        </div>
-                                    @empty
-                                        <span class="muted">Nenhum funcionário cadastrado.</span>
-                                    @endforelse
-                                    <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:8px">
-                                        <span class="badge badge-blue">{{ $funcionariosTotal }}</span>
-                                        <span>funcionário(s) com item 4 (4.1 a 4.8) do prontuário.</span>
-                                        <a href="{{ route('funcionarios.create', ['from' => 'prontuario']) }}">Cadastrar funcionário</a>
-                                    </div>
-                                </td>
-                            </tr>
-                        @endif
                     </tbody>
                 </table>
             </div>

@@ -2,14 +2,22 @@
 
 namespace App\Models;
 
-use App\Enums\Source;
 use App\Models\Concerns\BelongsToTenant;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Support\Facades\DB;
 
+/**
+ * Cadastro do funcionário e seus itens de documentação. Módulo próprio: não
+ * tem nenhuma ligação com item de catálogo — a numeração dos itens é
+ * sequencial por funcionário (1, 2, 3…).
+ *
+ * Demissão = desativação. O registro e todo o histórico permanecem; apenas a
+ * edição é desligada. Reativação é uma janela temporária de 48h e só Admin
+ * ou SuperAdmin conseguem fazê-la (senha + justificativa).
+ */
 class Funcionario extends Model
 {
     use BelongsToTenant, HasFactory;
@@ -18,63 +26,127 @@ class Funcionario extends Model
         'tenant_id',
         'nome',
         'matricula',
+        'cpf',
+        'data_admissao',
+        'situacao_id',
     ];
+
+    /**
+     * Janela de reativação concedida ao administrador, em horas.
+     */
+    public const REATIVACAO_HORAS = 48;
+
+    protected function casts(): array
+    {
+        return [
+            'cpf' => 'string',
+            'data_admissao' => 'date',
+            'ativo' => 'boolean',
+            'desativado_em' => 'datetime',
+            'desativacao_justificativa' => 'string',
+            'reativado_em' => 'datetime',
+            'reativacao_justificativa' => 'string',
+            'reativacao_expira_em' => 'datetime',
+        ];
+    }
 
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::class);
     }
 
+    /**
+     * Situação de vínculo (Ativo/Inativo) — catálogo `funcionario_situacoes`.
+     * Nada a ver com o fluxo de desativar/reativar (`isAtivo()`).
+     */
+    public function situacao(): BelongsTo
+    {
+        return $this->belongsTo(FuncionarioSituacao::class, 'situacao_id');
+    }
+
+    /**
+     * Itens de documentação, em numeração sequencial (1, 2, 3…).
+     */
     public function items(): HasMany
     {
-        return $this->hasMany(TenantItem::class);
+        return $this->hasMany(FuncionarioItem::class)->orderBy('numero');
     }
 
     /**
-     * Sub-itens do item 4 do prontuário (4.1..4.8) que pertencem a este funcionário.
+     * Quem desligou o funcionário no registro atual.
      */
-    public function prontuarioItems(): HasMany
+    public function desativador(): BelongsTo
     {
-        return $this->items()
-            ->whereHas('catalogItem', fn ($q) => $q->where('source', Source::Prontuario->value)->where('n1', 4))
-            ->with('catalogItem');
+        return $this->belongsTo(User::class, 'desativado_por');
     }
 
     /**
-     * Cria/garante as linhas tenant_items 4.1..4.8 deste funcionário.
+     * Quem reativou o funcionário na janela atual.
      */
-    public function bootstrapProntuarioItems(): int
+    public function reativador(): BelongsTo
     {
-        $subitems = CatalogItem::query()
-            ->where('source', Source::Prontuario->value)
-            ->where('n1', 4)
-            ->where('is_section', false)
-            ->orderBy('n1')
-            ->orderBy('n2')
-            ->orderBy('n3')
-            ->get();
+        return $this->belongsTo(User::class, 'reativado_por');
+    }
 
-        $existing = $this->items()->pluck('catalog_item_id');
+    public function evidenciasCount(): int
+    {
+        return $this->items()->withCount('evidences')->get()->sum('evidences_count');
+    }
 
-        $now = now();
-        $rows = $subitems
-            ->reject(fn ($catalog) => $existing->contains($catalog->id))
-            ->map(fn ($catalog) => [
-                'tenant_id' => $this->tenant_id,
-                'funcionario_id' => $this->id,
-                'catalog_item_id' => $catalog->id,
-                'code' => $catalog->code,
-                'title' => $catalog->title,
-                'source' => $catalog->source,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])
-            ->all();
+    /**
+     * Próxima numeração disponível para este funcionário.
+     */
+    public function nextItemNumber(): int
+    {
+        return ((int) $this->items()->max('numero')) + 1;
+    }
 
-        if ($rows === []) {
-            return 0;
-        }
+    /**
+     * Registro apagado nunca: "desativado" é o estado de negócio.
+     *
+     * A janela de reativação é respeitada na LEITURA (`reativacao_expira_em`),
+     * para que o funcionário já apareça inativo mesmo antes de o comando
+     * agendado rodar.
+     */
+    public function scopeAtivos(Builder $query): Builder
+    {
+        return $query->where('ativo', true)
+            ->where(fn (Builder $q) => $q->whereNull('reativacao_expira_em')
+                ->orWhere('reativacao_expira_em', '>', now()));
+    }
 
-        return DB::table('tenant_items')->insert($rows);
+    public function scopeInativos(Builder $query): Builder
+    {
+        return $query->where(fn (Builder $q) => $q->where('ativo', false)
+            ->orWhere(fn (Builder $inner) => $inner
+                ->where('ativo', true)
+                ->whereNotNull('reativacao_expira_em')
+                ->where('reativacao_expira_em', '<=', now())));
+    }
+
+    /**
+     * Só está ativo se a marcação bater com a janela de reativação.
+     */
+    public function isAtivo(): bool
+    {
+        return $this->ativo && ! $this->reativacaoExpirada();
+    }
+
+    public function reativacaoExpirada(): bool
+    {
+        return $this->reativacao_expira_em !== null && $this->reativacao_expira_em->isPast();
+    }
+
+    /**
+     * situation badge: ativo = azul, inativo = cinza.
+     */
+    public function situacaoLabel(): string
+    {
+        return $this->isAtivo() ? 'Ativo' : 'Inativo';
+    }
+
+    public function auditLabel(): string
+    {
+        return $this->nome;
     }
 }

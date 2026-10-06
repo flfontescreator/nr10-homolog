@@ -6,6 +6,8 @@ use App\Enums\Role;
 use App\Enums\Source;
 use App\Models\CatalogItem;
 use App\Models\Funcionario;
+use App\Models\FuncionarioItem;
+use App\Models\Situacao;
 use App\Models\Tenant;
 use App\Models\TenantItem;
 use App\Models\User;
@@ -16,6 +18,8 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call(CatalogSeeder::class);
+        $this->call(RncCatalogSeeder::class);
+        $this->call(LocalidadeSeeder::class);
 
         $this->seedSuperAdmins();
         $this->seedDemoTenant();
@@ -97,13 +101,30 @@ class DatabaseSeeder extends Seeder
             ['nome' => 'Carlos Pereira', 'matricula' => 'F003'],
         ];
 
+        $itens = [
+            'Atestado médico de aptitude física',
+            'Certificado de conclusão do treinamento NR-10',
+            'Documento de identificação com foto',
+        ];
+
         foreach ($funcionarios as $f) {
             $funcionario = Funcionario::updateOrCreate(
                 ['tenant_id' => $tenant->id, 'matricula' => $f['matricula']],
                 ['nome' => $f['nome']]
             );
 
-            $funcionario->bootstrapProntuarioItems();
+            // Os itens de documentação são criados sob demanda no módulo
+            // Funcionário; o seeding apenas deixa um exemplo navegável.
+            foreach ($itens as $titulo) {
+                FuncionarioItem::firstOrCreate([
+                    'funcionario_id' => $funcionario->id,
+                    'titulo' => $titulo,
+                ], [
+                    'tenant_id' => $tenant->id,
+                    'numero' => $funcionario->nextItemNumber(),
+                    'situacao_id' => Situacao::default()?->id,
+                ]);
+            }
         }
     }
 
@@ -166,7 +187,9 @@ class DatabaseSeeder extends Seeder
 
         $parsed = \DateTime::createFromFormat('Y-m-d H:i:s', $value) ?: \DateTime::createFromFormat('Y-m-d', $value);
 
-        return $parsed?->format('Y-m-d');
+        // A planilha tem células de status na coluna de data ("Conforme
+        // Revisão"): não é data, então fica nula em vez de quebrar o seed.
+        return $parsed instanceof \DateTimeInterface ? $parsed->format('Y-m-d') : null;
     }
 
     protected function clean(string $value): ?string

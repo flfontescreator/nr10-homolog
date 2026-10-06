@@ -18,6 +18,8 @@
             $crumb = 'Check-List NR-10';
         } elseif (str_starts_with($routeName, 'prontuario')) {
             $crumb = 'Prontuário NR-10';
+        } elseif (str_starts_with($routeName, 'rnc')) {
+            $crumb = 'RNC';
         } elseif (str_starts_with($routeName, 'funcionarios')) {
             $crumb = 'Funcionários';
         } elseif (str_starts_with($routeName, 'checklist') || str_starts_with($routeName, 'nc-documents')) {
@@ -48,6 +50,7 @@
                 'items' => [
                     ['label' => 'Check-List NR-10', 'icon' => 'clipboard', 'route' => 'cronograma.index', 'match' => 'cronograma*'],
                     ['label' => 'Prontuário NR-10', 'icon' => 'file', 'route' => 'prontuario.index', 'match' => 'prontuario*'],
+                    ['label' => 'RNC', 'icon' => 'alert', 'route' => 'rnc.index', 'match' => 'rnc.*'],
                     ['label' => 'Funcionários', 'icon' => 'users', 'route' => 'funcionarios.index', 'match' => 'funcionarios*'],
                     ['label' => 'Não Conformidades', 'icon' => 'zap', 'route' => 'checklist.index', 'match' => 'checklist*'],
                 ],
@@ -62,6 +65,7 @@
                 'label' => 'Administração',
                 'items' => [
                     ['label' => 'Clientes', 'icon' => 'building', 'route' => 'tenants.index', 'match' => 'tenants*', 'visible' => $currentUser->isSuperAdmin()],
+                    ['label' => 'Catálogos RNC', 'icon' => 'alert', 'route' => 'rnc.catalogo.index', 'match' => 'rnc.catalogo.*', 'visible' => $currentUser->isAdmin()],
                 ],
             ],
             'configuracoes' => [

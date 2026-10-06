@@ -23,7 +23,6 @@ class TenantItem extends Model
 
     protected $fillable = [
         'tenant_id',
-        'funcionario_id',
         'catalog_item_id',
         'code',
         'title',
@@ -44,6 +43,7 @@ class TenantItem extends Model
         'status',
         'evidencias_status',
         'data_validade',
+        'validade_aplica',
         'percentual',
         'comentarios',
         'prazo_execucao',
@@ -57,6 +57,7 @@ class TenantItem extends Model
             'data_realizacao' => 'date',
             'prazo_execucao' => 'date',
             'data_validade' => 'date',
+            'validade_aplica' => 'boolean',
             'percentual' => 'decimal:2',
             'setores' => 'array',
             'status' => Status::class,
@@ -90,11 +91,6 @@ class TenantItem extends Model
     public function catalogItem(): BelongsTo
     {
         return $this->belongsTo(CatalogItem::class, 'catalog_item_id');
-    }
-
-    public function funcionario(): BelongsTo
-    {
-        return $this->belongsTo(Funcionario::class);
     }
 
     public function evidences(): HasMany
@@ -147,10 +143,8 @@ class TenantItem extends Model
 
     /**
      * Média Geral: média dos percentuais dos subitens filhos (renda calculada, não armazenada).
-     * $funcionarioScope: null = todos; 'none' = só itens por tenant (funcionario_id nulo);
-     * 'any' = só itens de funcionários (item 4 do prontuário).
      */
-    public static function averagePercent(int $tenantId, string $source, int $n1, ?string $funcionarioScope = null): ?float
+    public static function averagePercent(int $tenantId, string $source, int $n1): ?float
     {
         $values = self::query()
             ->where('tenant_items.tenant_id', $tenantId)
@@ -159,8 +153,6 @@ class TenantItem extends Model
             ->where('catalog_items.n1', $n1)
             ->where('catalog_items.is_section', false)
             ->whereNotNull('tenant_items.percentual')
-            ->when($funcionarioScope === 'none', fn ($q) => $q->whereNull('tenant_items.funcionario_id'))
-            ->when($funcionarioScope === 'any', fn ($q) => $q->whereNotNull('tenant_items.funcionario_id'))
             ->pluck('tenant_items.percentual');
 
         if ($values->isEmpty()) {

@@ -1,26 +1,26 @@
 @extends('layouts.app')
 
-@section('title', 'Funcionários — Prontuário NR-10')
+@section('title', 'Funcionários')
 
 @section('content')
     <div class="page-header">
         <div>
-            <h1>Funcionários — Item 4</h1>
-            <p class="subtitle">Cada funcionário possui o item 4 (documentação comprobatória) com seus sub-itens 4.1 a 4.8, cada um com seus próprios campos de controle e evidências.</p>
+            <h1>Funcionários</h1>
+            <p class="subtitle">
+                Cada funcionário tem seus próprios itens de documentação, numerados em sequência
+                (1, 2, 3…), e cada item pode ou não ter evidência anexada.
+            </p>
         </div>
-        <div style="display:flex;gap:8px">
-            @if($canWrite)
-                <a class="btn" href="{{ route('funcionarios.create') }}">+ Novo funcionário</a>
-            @endif
-            <a class="btn btn-secondary" href="{{ route('prontuario.index') }}">← Voltar ao Prontuário</a>
-        </div>
+        @if($canWrite)
+            <a class="btn" href="{{ route('funcionarios.create') }}">+ Novo funcionário</a>
+        @endif
     </div>
 
     @if($funcionarios->isEmpty())
         <div class="card docs-empty">
             Nenhum funcionário cadastrado.
             @if($canWrite)
-                <a href="{{ route('funcionarios.create') }}">Cadastre o primeiro</a> para abrir o item 4 do prontuário por funcionário.
+                <a href="{{ route('funcionarios.create') }}">Cadastre o primeiro</a> para começar a documentação.
             @endif
         </div>
     @else
@@ -31,8 +31,9 @@
                         <tr>
                             <th>Funcionário</th>
                             <th>Matrícula</th>
-                            <th>Sub-itens (4.x)</th>
-                            <th>Evidências</th>
+                            <th class="text-right">Itens</th>
+                            <th class="text-right">Evidências</th>
+                            <th>Situação</th>
                             <th class="text-right">Ações</th>
                         </tr>
                     </thead>
@@ -41,14 +42,22 @@
                             <tr>
                                 <td><strong>{{ $funcionario->nome }}</strong></td>
                                 <td>{{ $funcionario->matricula ?: '—' }}</td>
-                                <td>
+                                <td class="text-right">
                                     <span class="badge badge-neutral">{{ $funcionario->items_count }}</span>
-                                    <span class="badge badge-blue">item 4</span>
                                 </td>
-                                <td>
+                                <td class="text-right">
                                     <span class="badge {{ ($evidencesByFuncionario[$funcionario->id] ?? 0) > 0 ? 'badge-green' : 'badge-neutral' }}">
                                         {{ $evidencesByFuncionario[$funcionario->id] ?? 0 }}
                                     </span>
+                                </td>
+                                <td>
+                                    @if($funcionario->situacao)
+                                        <span class="badge {{ $funcionario->situacao->isInativo() ? 'badge-neutral' : 'badge-blue' }}">
+                                            {{ $funcionario->situacao->nome }}
+                                        </span>
+                                    @else
+                                        <span class="muted">-</span>
+                                    @endif
                                 </td>
                                 <td class="text-right" style="white-space:nowrap">
                                     <a class="btn btn-sm" href="{{ route('funcionarios.show', $funcionario) }}">
@@ -56,11 +65,13 @@
                                     </a>
                                     @if($canWrite)
                                         <a class="btn btn-sm btn-secondary" href="{{ route('funcionarios.edit', $funcionario) }}">Editar</a>
+                                    @endif
+                                    @if($canHardDelete)
                                         <form method="POST" action="{{ route('funcionarios.destroy', $funcionario) }}"
-                                              data-confirm="Excluir o funcionário '{{ $funcionario->nome }}' e seus sub-itens do item 4?" style="display:inline">
+                                              data-confirm="Excluir definitivamente o funcionário {{ $funcionario->nome }} e seus itens? As evidências permanecem na Gestão de Documentos." style="display:inline">
                                             @csrf
                                             @method('DELETE')
-                                            <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
+                                            <button class="btn btn-sm btn-danger" type="submit" title="Exclusão definitiva">Excluir</button>
                                         </form>
                                     @endif
                                 </td>

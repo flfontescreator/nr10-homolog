@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use App\Enums\Source;
-use App\Models\CatalogItem;
+use App\Models\Evidence;
 use App\Models\Funcionario;
+use App\Models\FuncionarioItem;
+use App\Models\FuncionarioSituacao;
 use App\Models\NcDocument;
-use App\Models\NcDocumentItem;
-use App\Models\TenantItem;
+use App\Models\Situacao;
+use App\Support\Cpf;
+use App\Support\EvidenciaUploadService;
 use App\Support\TenantContext;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\RedirectResponse;
@@ -16,19 +18,19 @@ use Illuminate\Validation\Rule;
 
 class FuncionarioController extends Controller
 {
-    public function index(): View
+    public function index(Request $request): View
     {
         $tenantId = TenantContext::id();
 
         $funcionarios = Funcionario::query()
-            ->withCount('items')
             ->where('tenant_id', $tenantId)
+            ->with('situacao')
+            ->withCount('items')
             ->orderBy('nome')
             ->get();
 
-        // Contagem total de evidências somando os sub-itens (item 4) de cada funcionário.
-        $evidencesByFuncionario = TenantItem::query()
-            ->whereNotNull('funcionario_id')
+        $evidencesByFuncionario = FuncionarioItem::query()
+            ->where('tenant_id', $tenantId)
             ->withCount('evidences')
             ->get()
             ->groupBy('funcionario_id')
@@ -37,7 +39,8 @@ class FuncionarioController extends Controller
         return view('funcionarios.index', [
             'funcionarios' => $funcionarios,
             'evidencesByFuncionario' => $evidencesByFuncionario,
-            'canWrite' => request()->user()->canWrite(),
+            'canWrite' => $request->user()->canWrite(),
+            'canHardDelete' => $this->canHardDelete($request),
         ]);
     }
 
@@ -56,6 +59,8 @@ class FuncionarioController extends Controller
 
         $tenantId = TenantContext::id();
 
+        $this->normalizeCpfInput($request);
+
         $data = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
             'matricula' => [
@@ -64,34 +69,39 @@ class FuncionarioController extends Controller
                 'max:60',
                 Rule::unique('funcionarios', 'matricula')->where('tenant_id', $tenantId),
             ],
+            'cpf' => [
+                'nullable',
+                Rule::unique('funcionarios', 'cpf')->where('tenant_id', $tenantId),
+            ],
+            'data_admissao' => ['nullable', 'date'],
         ]);
+
+        $data['cpf'] = Cpf::validateOrFail($data['cpf'] ?? null);
+
+        // A Situação de vínculo não é escolhida na tela: todo funcionário novo
+        // entra como Ativo. O valor pode ser ajustado direto no banco.
+        $data['situacao_id'] = FuncionarioSituacao::default()?->id;
 
         $funcionario = Funcionario::create([
             ...$data,
             'tenant_id' => $tenantId,
         ]);
 
-        $created = $funcionario->bootstrapProntuarioItems();
-
-        // Mantém o contexto do documento quando o cadastro veio dele, para o
-        // "Voltar" da página do funcionário retornar ao documento.
         $redirectParams = ['funcionario' => $funcionario];
 
-        if ($request->query('from') === 'prontuario') {
-            $redirectParams['from'] = 'prontuario';
-        }
+        foreach (['prontuario', 'document'] as $from) {
+            if ($request->query('from') === $from) {
+                $redirectParams['from'] = $from;
 
-        if ($request->query('from') === 'document') {
-            $redirectParams['from'] = 'document';
-
-            if ($request->filled('document_id')) {
-                $redirectParams['document_id'] = $request->query('document_id');
+                if ($from === 'document' && $request->filled('document_id')) {
+                    $redirectParams['document_id'] = $request->query('document_id');
+                }
             }
         }
 
         return redirect()
             ->route('funcionarios.show', $redirectParams)
-            ->with('success', "Funcionário criado com {$created} sub-itens do item 4 do prontuário.");
+            ->with('success', 'Funcionário criado. Agora são possíveis adicionar os itens de documentação.');
     }
 
     public function show(Request $request, Funcionario $funcionario): View
@@ -100,51 +110,17 @@ class FuncionarioController extends Controller
             abort(404);
         }
 
-        $items = TenantItem::query()
-            ->where('funcionario_id', $funcionario->id)
-            ->whereHas('catalogItem', fn ($c) => $c->where('source', Source::Prontuario->value)->where('n1', 4))
-            ->with('catalogItem')
+        $items = $funcionario->items()
+            ->with('situacao')
             ->withCount('evidences')
-            ->get()
-            ->sortBy(fn ($item) => $item->catalogItem?->n2)
-            ->values();
-
-        // Catálogo 4.x disponível: base para adicionar sub-item e para o seletor
-        // de "alterar" de cada sub-item (sem duplicar itens já usados pelo funcionário).
-        $catalogPool = CatalogItem::query()
-            ->where('source', Source::Prontuario->value)
-            ->where('n1', 4)
-            ->where('is_section', false)
-            ->orderBy('n2')
-            ->orderBy('n3')
-            ->orderBy('n4')
             ->get();
-
-        $assigned = $items->pluck('catalog_item_id');
-
-        $availableToAdd = $catalogPool
-            ->reject(fn ($catalog) => $assigned->contains($catalog->id))
-            ->values();
-
-        $catalogOptions = [];
-
-        foreach ($items as $item) {
-            $usedByOthers = $items->pluck('catalog_item_id')
-                ->reject(fn ($id) => $id === $item->catalog_item_id);
-
-            $catalogOptions[$item->id] = $catalogPool
-                ->reject(fn ($catalog) => $usedByOthers->contains($catalog->id))
-                ->values();
-        }
 
         return view('funcionarios.show', [
             'funcionario' => $funcionario,
             'items' => $items,
-            'catalogPool' => $catalogPool,
-            'availableToAdd' => $availableToAdd,
-            'catalogOptions' => $catalogOptions,
+            'situacoes' => Situacao::query()->orderBy('ordem')->get(),
             'canWrite' => $request->user()->canWrite(),
-            'canDeleteEvidence' => $request->user()->canDeleteEvidence(),
+            'canHardDelete' => $this->canHardDelete($request),
             'backUrl' => $this->documentBackUrl($request),
         ]);
     }
@@ -157,7 +133,9 @@ class FuncionarioController extends Controller
             abort(404);
         }
 
-        return view('funcionarios.edit', ['funcionario' => $funcionario]);
+        return view('funcionarios.edit', [
+            'funcionario' => $funcionario,
+        ]);
     }
 
     public function update(Request $request, Funcionario $funcionario): RedirectResponse
@@ -167,6 +145,8 @@ class FuncionarioController extends Controller
         if ($funcionario->tenant_id !== TenantContext::id()) {
             abort(404);
         }
+
+        $this->normalizeCpfInput($request);
 
         $data = $request->validate([
             'nome' => ['required', 'string', 'max:255'],
@@ -178,8 +158,18 @@ class FuncionarioController extends Controller
                     ->where('tenant_id', $funcionario->tenant_id)
                     ->ignore($funcionario->id),
             ],
+            'cpf' => [
+                'nullable',
+                Rule::unique('funcionarios', 'cpf')
+                    ->where('tenant_id', $funcionario->tenant_id)
+                    ->ignore($funcionario->id),
+            ],
+            'data_admissao' => ['nullable', 'date'],
         ]);
 
+        $data['cpf'] = Cpf::validateOrFail($data['cpf'] ?? null);
+
+        // A Situação não é editável pela tela: preserva o valor gravado.
         $funcionario->update($data);
 
         return redirect()
@@ -187,43 +177,41 @@ class FuncionarioController extends Controller
             ->with('success', 'Funcionário atualizado.');
     }
 
+    /**
+     * Exclusão definitiva do funcionário e dos seus itens. As evidências NÃO
+     * são apagadas: elas são desvinculadas e continuam disponíveis na Gestão de
+     * Documentos. Disponível para Gestor/Admin/SuperAdmin.
+     */
     public function destroy(Request $request, Funcionario $funcionario): RedirectResponse
     {
-        $this->authorizeWrite();
+        if (! $this->canHardDelete($request)) {
+            abort(403);
+        }
 
         if ($funcionario->tenant_id !== TenantContext::id()) {
             abort(404);
         }
 
-        $evidences = $funcionario->items()->withCount('evidences')->get()
-            ->sum('evidences_count');
+        $nome = $funcionario->nome;
 
-        if ($evidences > 0) {
-            return back()->withErrors([
-                'funcionario' => 'Não é possível excluir: existem evidências anexadas aos sub-itens deste funcionário. Remova as evidências primeiro.',
-            ]);
-        }
+        foreach ($funcionario->items()->with('evidences')->get() as $item) {
+            $item->evidences()->update(['funcionario_item_id' => null]);
 
-        $linkedCodes = $this->linkedDocumentCodes($funcionario->items()->pluck('id')->all());
-
-        if (! empty($linkedCodes)) {
-            return back()->withErrors([
-                'funcionario' => $this->linkedBlockMessage('excluir o funcionário', $linkedCodes),
-            ]);
+            $item->delete();
         }
 
         $funcionario->delete();
 
         return redirect()
             ->route('funcionarios.index')
-            ->with('success', 'Funcionário excluído.');
+            ->with('success', "Funcionário {$nome} excluído. As evidências permanecem na Gestão de Documentos.");
     }
 
     /**
-     * Adiciona um sub-item 4.x do catálogo a este funcionário (cada funcionário
-     * pode ter quantidade própria de sub-itens).
+     * Adiciona um item de documentação. A numeração é sequencial por
+     * funcionário e nunca reusada.
      */
-    public function storeSubItem(Request $request, Funcionario $funcionario): RedirectResponse
+    public function storeItem(Request $request, Funcionario $funcionario): RedirectResponse
     {
         $this->authorizeWrite();
 
@@ -232,169 +220,156 @@ class FuncionarioController extends Controller
         }
 
         $data = $request->validate([
-            'catalog_item_id' => ['required', 'integer'],
+            'titulo' => ['required', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        $catalog = CatalogItem::query()
-            ->where('id', $data['catalog_item_id'])
-            ->where('source', Source::Prontuario->value)
-            ->where('n1', 4)
-            ->where('is_section', false)
-            ->first();
+        $defaultSituacao = Situacao::default();
 
-        if (! $catalog) {
-            return back()->withErrors(['catalog_item_id' => 'Sub-item inválido do item 4 do prontuário.']);
-        }
-
-        if ($funcionario->items()->where('catalog_item_id', $catalog->id)->exists()) {
-            return back()->withErrors(['catalog_item_id' => 'Este funcionário já possui o sub-item '.$catalog->code.'.']);
-        }
-
-        TenantItem::firstOrCreate([
+        $item = FuncionarioItem::create([
             'tenant_id' => $funcionario->tenant_id,
             'funcionario_id' => $funcionario->id,
-            'catalog_item_id' => $catalog->id,
-        ], [
-            'code' => $catalog->code,
-            'title' => $catalog->title,
-            'source' => Source::Prontuario->value,
+            'numero' => $funcionario->nextItemNumber(),
+            'titulo' => $data['titulo'],
+            'descricao' => $data['descricao'] ?? null,
+            'situacao_id' => $defaultSituacao?->id,
         ]);
 
-        return back()->with('success', 'Sub-item '.$catalog->code.' adicionado a '.$funcionario->nome.'.');
+        return redirect()
+            ->route('funcionarios.item.show', [$funcionario, $item])
+            ->with('success', 'Item '.$item->numero.' criado.');
     }
 
     /**
-     * Altera o sub-item de um funcionário (troca o item do catálogo mapeado).
-     * Bloqueado quando o sub-item está vinculado a documentos, apontando quais.
+     * Tela de um item: campos de controle + evidências anexadas.
      */
-    public function updateSubItem(Request $request, Funcionario $funcionario, TenantItem $item): RedirectResponse
+    public function showItem(Request $request, Funcionario $funcionario, FuncionarioItem $item): View
+    {
+        if ($funcionario->tenant_id !== TenantContext::id()) {
+            abort(404);
+        }
+
+        $this->authorizeItem($funcionario, $item);
+
+        $item->load('situacao');
+        $evidences = $item->evidences()->latest()->get();
+
+        return view('funcionarios.item', [
+            'funcionario' => $funcionario,
+            'item' => $item,
+            'situacoes' => Situacao::query()->orderBy('ordem')->get(),
+            'evidences' => $evidences,
+            'canWrite' => $request->user()->canWrite(),
+            'canDeleteEvidence' => $request->user()->canDeleteEvidence(),
+        ]);
+    }
+
+    /**
+     * Atualiza os campos de controle do item. O checkbox "Se aplica" é a
+     * fonte da verdade da validade: desmarcado limpa a data, marcado exige data.
+     */
+    public function updateItem(Request $request, Funcionario $funcionario, FuncionarioItem $item): RedirectResponse
     {
         $this->authorizeWrite();
 
-        if ($funcionario->tenant_id !== TenantContext::id() || $item->funcionario_id !== $funcionario->id) {
-            abort(404);
-        }
+        $this->authorizeItem($funcionario, $item);
 
         $data = $request->validate([
-            'catalog_item_id' => ['required', 'integer'],
+            'titulo' => ['required', 'string', 'max:255'],
+            'descricao' => ['nullable', 'string', 'max:5000'],
+            'situacao_id' => ['nullable', 'integer', Rule::exists('situacoes', 'id')],
+            'prazo_adequacao' => ['nullable', 'date'],
+            'data_adequacao' => ['nullable', 'date'],
+            'data_verificacao' => ['nullable', 'date'],
+            'comentario' => ['nullable', 'string', 'max:5000'],
         ]);
 
-        $catalog = CatalogItem::query()
-            ->where('id', $data['catalog_item_id'])
-            ->where('source', Source::Prontuario->value)
-            ->where('n1', 4)
-            ->where('is_section', false)
-            ->first();
-
-        if (! $catalog) {
-            return back()->withErrors(['catalog_item_id' => 'Sub-item inválido do item 4 do prontuário.']);
-        }
-
-        if ((int) $item->catalog_item_id === (int) $catalog->id) {
-            return back()->with('success', 'O sub-item selecionado já é o atual.');
-        }
-
-        $linkedCodes = $this->linkedDocumentCodes([$item->id]);
-
-        if (! empty($linkedCodes)) {
-            return back()->withErrors([
-                'subitem' => $this->linkedBlockMessage('alterar o sub-item', $linkedCodes),
-            ]);
-        }
-
-        if ($funcionario->items()->where('catalog_item_id', $catalog->id)->where('id', '!=', $item->id)->exists()) {
-            return back()->withErrors(['catalog_item_id' => 'Este funcionário já possui o sub-item '.$catalog->code.'.']);
-        }
-
-        $item->update([
-            'catalog_item_id' => $catalog->id,
-            'code' => $catalog->code,
-            'title' => $catalog->title,
-            'source' => Source::Prontuario->value,
+        $item->fill([
+            'titulo' => $data['titulo'],
+            'descricao' => $data['descricao'] ?? null,
+            'situacao_id' => $data['situacao_id'] ?? null,
+            'prazo_adequacao' => $data['prazo_adequacao'] ?? null,
+            'data_adequacao' => $data['data_adequacao'] ?? null,
+            'data_verificacao' => $data['data_verificacao'] ?? null,
+            'comentario' => $data['comentario'] ?? null,
         ]);
 
-        return back()->with('success', 'Sub-item alterado para '.$catalog->code.'.');
+        $item->updated_by = $request->user()->id;
+        $item->save();
+
+        return back()->with('success', 'Item '.$item->numero.' atualizado.');
     }
 
-    /**
-     * Exclui um sub-item do funcionário. Bloqueado se houver evidências ou
-     * vínculo com documentos — apontando quais documentos prendem o item.
-     */
-    public function destroySubItem(Request $request, Funcionario $funcionario, TenantItem $item): RedirectResponse
+    public function destroyItem(Request $request, Funcionario $funcionario, FuncionarioItem $item): RedirectResponse
     {
         $this->authorizeWrite();
 
-        if ($funcionario->tenant_id !== TenantContext::id() || $item->funcionario_id !== $funcionario->id) {
-            abort(404);
-        }
+        $this->authorizeItem($funcionario, $item);
 
-        $linkedCodes = $this->linkedDocumentCodes([$item->id]);
+        $numero = $item->numero;
 
-        if (! empty($linkedCodes)) {
-            return back()->withErrors([
-                'subitem' => $this->linkedBlockMessage('excluir o sub-item', $linkedCodes),
-            ]);
-        }
-
-        if ($item->evidences()->exists()) {
-            return back()->withErrors([
-                'subitem' => 'Não é possível excluir: este sub-item possui evidências anexadas. Remova as evidências primeiro.',
-            ]);
-        }
-
-        $code = $item->display_code;
+        // As evidências não são apagadas: desvincula do item (que deixa de
+        // existir) para que continuem disponíveis na Gestão de Documentos.
+        $item->evidences()->update(['funcionario_item_id' => null]);
 
         $item->delete();
 
-        return back()->with('success', 'Sub-item '.$code.' excluído.');
+        return redirect()
+            ->route('funcionarios.show', $funcionario)
+            ->with('success', 'Item '.$numero.' excluído. As evidências permanecem na Gestão de Documentos.');
     }
 
     /**
-     * Média geral dos sub-itens 4.x deste funcionário.
+     * Evidência do item do funcionário: arquivo + descrição obrigatória e
+     * validade com "Se aplica" (nem todo documento tem prazo de validade).
      */
-    public static function averagePercent(Funcionario $funcionario): ?float
+    public function uploadItemEvidence(Request $request, Funcionario $funcionario, FuncionarioItem $item): RedirectResponse
     {
-        $values = TenantItem::query()
-            ->where('tenant_items.funcionario_id', $funcionario->id)
-            ->whereNotNull('tenant_items.percentual')
-            ->pluck('tenant_items.percentual');
+        $this->authorizeWrite();
 
-        if ($values->isEmpty()) {
-            return null;
+        $this->authorizeItem($funcionario, $item);
+
+        $validade = EvidenciaUploadService::resolveValidade($request, 'evidence-validade');
+
+        $request->validate([
+            'evidence' => ['required', 'file', 'max:20480'],
+            'description' => ['required', 'string', 'max:255'],
+            'validade' => ['nullable', 'date'],
+        ]);
+
+        EvidenciaUploadService::storeForFuncionarioItem(
+            $request->file('evidence'),
+            $item,
+            $request->user(),
+            $request->string('description')->toString(),
+            $validade,
+        );
+
+        return back()->with('success', 'Evidência anexada com sucesso.');
+    }
+
+    public function destroyItemEvidence(Request $request, Funcionario $funcionario, FuncionarioItem $item, Evidence $evidence): RedirectResponse
+    {
+        if (! $request->user()->canDeleteEvidence()) {
+            abort(403);
         }
 
-        return round($values->avg(), 2);
-    }
+        $this->authorizeItem($funcionario, $item);
 
-    /**
-     * Códigos dos documentos (RNC-XXXXX) que vinculam os sub-itens informados.
-     */
-    protected function linkedDocumentCodes(array $tenantItemIds): array
-    {
-        return NcDocumentItem::query()
-            ->whereIn('tenant_item_id', array_values(array_filter($tenantItemIds)))
-            ->with('document')
-            ->get()
-            ->pluck('document.code')
-            ->unique()
-            ->values()
-            ->sort()
-            ->values()
-            ->all();
-    }
-
-    /**
-     * Mensagem de bloqueio que APONTA os documentos vinculados ao usuário.
-     */
-    protected function linkedBlockMessage(string $action, array $codes): string
-    {
-        $list = implode(', ', $codes);
-
-        if (count($codes) === 1) {
-            return "Não é possível {$action}: o item está vinculado ao documento {$list}. Remova o vínculo primeiro.";
+        if ((int) $evidence->funcionario_item_id !== (int) $item->id) {
+            abort(404);
         }
 
-        return "Não é possível {$action}: o item está vinculado aos documentos {$list}. Remova os vínculos primeiro.";
+        EvidenciaUploadService::deleteEvidence($evidence);
+
+        return back()->with('success', 'Evidência removida.');
+    }
+
+    protected function authorizeItem(Funcionario $funcionario, FuncionarioItem $item): void
+    {
+        if ($funcionario->tenant_id !== TenantContext::id() || (int) $item->funcionario_id !== (int) $funcionario->id) {
+            abort(404);
+        }
     }
 
     protected function authorizeWrite(): void
@@ -405,11 +380,32 @@ class FuncionarioController extends Controller
     }
 
     /**
-     * URL de retorno quando o cadastro/visualização do funcionário veio de um
-     * documento de não conformidades (?from=document): o "Voltar" leva de volta
-     * à edição daquele documento (ou ao formulário de novo documento). Sem o
-     * contexto de documento, retorna null (caindo no padrão, funcionarios.index).
+     * Exclusão definitiva do funcionário: Gestor/Admin/SuperAdmin.
      */
+    protected function canHardDelete(Request $request): bool
+    {
+        return $request->user()->canWrite();
+    }
+
+    /**
+     * O checkbox "Se aplica" é a fonte da verdade da validade da evidência
+     * (desmarcado limpa a data, marcado exige data) — comportamento comum a
+     * todos os módulos via `EvidenciaUploadService::resolveValidade()`.
+     */
+
+    /**
+     * Tira a máscara do CPF ANTES das regras de validação: o `unique` consulta o
+     * banco com o valor recebido, e lá o CPF está gravado só com dígitos.
+     */
+    protected function normalizeCpfInput(Request $request): void
+    {
+        $cpf = $request->input('cpf');
+
+        if (is_string($cpf) && $cpf !== '') {
+            $request->merge(['cpf' => Cpf::normalize($cpf) ?? $cpf]);
+        }
+    }
+
     protected function documentBackUrl(Request $request): ?string
     {
         if ($request->query('from') === 'prontuario') {
