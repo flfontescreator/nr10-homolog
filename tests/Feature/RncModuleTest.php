@@ -13,6 +13,7 @@ use App\Models\Rnc;
 use App\Models\RncItem;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Support\Rnc\RncPdfRenderer;
 use App\Support\Rnc\RncPublicationService;
 use Database\Seeders\RncCatalogSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,6 +124,44 @@ class RncModuleTest extends TestCase
         $rnc->refresh();
         $this->assertSame(RncStatus::Publicado, $rnc->status);
         $this->assertSame(1, $rnc->current_revision);
+    }
+
+    public function test_publicacao_sobe_sem_dompdf_e_preserva_pdf_na_reemissao(): void
+    {
+        $this->app->instance(RncPdfRenderer::class, new class extends RncPdfRenderer
+        {
+            public function available(): bool
+            {
+                return false;
+            }
+        });
+
+        $tenant = $this->makeTenant();
+        $user = User::factory()->create(['role' => Role::Manager, 'tenant_id' => $tenant->id]);
+        $rnc = $this->makeRnc($tenant);
+        $this->makeItem($rnc, 'Ausência de proteção termométrica');
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->post(route('rnc.publish', $rnc))
+            ->assertRedirect();
+
+        $revision = $rnc->revisions()->firstOrFail();
+
+        $this->assertSame(1, $revision->revision);
+        $this->assertNull($revision->pdf_path, 'Sem dompdf a revisão nasce com markdown + link, mas sem PDF em disco.');
+        $this->assertStringContainsString('# '.$rnc->titulo, $revision->markdown);
+        $this->assertNotNull($revision->public_token);
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->get(route('rnc.revision.pdf', [$rnc, $revision]))
+            ->assertRedirect(route('rnc.revision.print', [$rnc, $revision]));
+
+        $this->actingAs($user)->withSession($this->sessionData($tenant))
+            ->post(route('rnc.republish', $rnc))
+            ->assertRedirect();
+
+        $this->assertSame(1, $rnc->revisions()->count());
+        $this->assertNull($rnc->revisions()->firstOrFail()->pdf_path);
     }
 
     public function test_campo_inspecao_tecnica_saiu_do_formulario_e_do_relatorio(): void

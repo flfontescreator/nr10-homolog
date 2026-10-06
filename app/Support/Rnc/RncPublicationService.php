@@ -57,13 +57,15 @@ class RncPublicationService
 
             $snapshot = $rnc->buildSnapshot();
             $markdown = $this->markdown->build($rnc, $snapshot);
+            // Sem dompdf no servidor store() devolve null: a revisão nasce
+            // com markdown + link + tela de impressão, sem PDF pré-gravado.
             $pdfPath = $this->pdf->store($rnc, $snapshot, $label, $revisao);
 
             if ($reemissao) {
                 $existente->forceFill([
                     'snapshot' => $snapshot,
                     'markdown' => $markdown,
-                    'pdf_path' => $pdfPath,
+                    'pdf_path' => $pdfPath ?? $existente->pdf_path,
                     'notas' => $notas ?? $existente->notas,
                     'published_at' => now(),
                     'published_by' => $user?->id ?? $existente->published_by,

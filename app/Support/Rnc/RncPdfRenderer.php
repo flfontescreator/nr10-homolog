@@ -43,11 +43,18 @@ class RncPdfRenderer
 
     /**
      * Grava o PDF da revisão e devolve o caminho relativo no disco `local`.
+     * Sem dompdf disponível no servidor devolve `null`: o `pdf_path` da
+     * revisão fica nulo e a publicação segue com markdown, link público e a
+     * tela de impressão (que gera o PDF pelo navegador).
      *
      * @param  array<string, mixed>  $snapshot
      */
-    public function store(Rnc $rnc, array $snapshot, string $revisionLabel, int $revision): string
+    public function store(Rnc $rnc, array $snapshot, string $revisionLabel, int $revision): ?string
     {
+        if (! $this->available()) {
+            return null;
+        }
+
         $path = self::pathFor($rnc, $revision);
 
         Storage::disk('local')->put($path, $this->render($rnc, $snapshot, $revisionLabel));
