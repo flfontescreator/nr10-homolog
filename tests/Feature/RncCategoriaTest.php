@@ -13,20 +13,20 @@ use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
- * Administração dos catálogos globais do RNC (projetos, criticidades e
+ * Administração das categorias globais do RNC (projetos, criticidades e
  * classificações de risco). Restrita a Admin/SuperAdmin.
  */
-class RncCatalogoTest extends TestCase
+class RncCategoriaTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_manager_nao_acessa_os_catalogos(): void
+    public function test_manager_nao_acessa_as_categorias(): void
     {
         $tenant = $this->makeTenant();
         $user = User::factory()->create(['role' => Role::Manager, 'tenant_id' => $tenant->id]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->get(route('rnc.catalogo.index'))
+            ->get(route('rnc.categoria.index'))
             ->assertForbidden();
     }
 
@@ -36,12 +36,12 @@ class RncCatalogoTest extends TestCase
         $user = User::factory()->create(['role' => Role::Admin, 'tenant_id' => $tenant->id]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->get(route('rnc.catalogo.index'))
+            ->get(route('rnc.categoria.index'))
             ->assertOk()
-            ->assertSee('Catálogos do RNC');
+            ->assertSee('Categorias do RNC');
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->post(route('rnc.catalogo.projeto.store'), ['nome' => 'Projeto Alpha', 'ativo' => '1'])
+            ->post(route('rnc.categoria.projeto.store'), ['nome' => 'Projeto Alpha', 'ativo' => '1'])
             ->assertRedirect();
 
         $this->assertDatabaseHas('projetos', ['nome' => 'Projeto Alpha', 'ativo' => true]);
@@ -53,11 +53,11 @@ class RncCatalogoTest extends TestCase
         $user = User::factory()->create(['role' => Role::Admin, 'tenant_id' => $tenant->id]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->post(route('rnc.catalogo.criticidade.store'), ['nome' => 'Urgente', 'ordem' => 5])
+            ->post(route('rnc.categoria.criticidade.store'), ['nome' => 'Urgente', 'ordem' => 5])
             ->assertRedirect();
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->post(route('rnc.catalogo.classificacao.store'), ['nome' => 'Crítico', 'ordem' => 4])
+            ->post(route('rnc.categoria.classificacao.store'), ['nome' => 'Crítico', 'ordem' => 4])
             ->assertRedirect();
 
         $this->assertDatabaseHas('criticidades', ['nome' => 'Urgente', 'ordem' => 5]);
@@ -85,8 +85,8 @@ class RncCatalogoTest extends TestCase
         ]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->from(route('rnc.catalogo.index'))
-            ->delete(route('rnc.catalogo.criticidade.destroy', $criticidade))
+            ->from(route('rnc.categoria.index'))
+            ->delete(route('rnc.categoria.criticidade.destroy', $criticidade))
             ->assertRedirect()
             ->assertSessionHas('error');
 
@@ -100,7 +100,7 @@ class RncCatalogoTest extends TestCase
         $projeto = Projeto::create(['nome' => 'Antigo', 'ativo' => true]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->put(route('rnc.catalogo.projeto.update', $projeto), ['nome' => 'Novo'])
+            ->put(route('rnc.categoria.projeto.update', $projeto), ['nome' => 'Novo'])
             ->assertRedirect();
 
         $this->assertDatabaseHas('projetos', ['id' => $projeto->id, 'nome' => 'Novo', 'ativo' => false]);
@@ -121,8 +121,8 @@ class RncCatalogoTest extends TestCase
         ]);
 
         $this->actingAs($user)->withSession($this->sessionData($tenant))
-            ->from(route('rnc.catalogo.index'))
-            ->delete(route('rnc.catalogo.projeto.destroy', $projeto))
+            ->from(route('rnc.categoria.index'))
+            ->delete(route('rnc.categoria.projeto.destroy', $projeto))
             ->assertRedirect()
             ->assertSessionHas('error');
 

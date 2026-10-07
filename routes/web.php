@@ -13,7 +13,7 @@ use App\Http\Controllers\FuncionarioController;
 use App\Http\Controllers\NcDocumentController;
 use App\Http\Controllers\ProntuarioCatalogController;
 use App\Http\Controllers\ProntuarioController;
-use App\Http\Controllers\RncCatalogoController;
+use App\Http\Controllers\RncCategoriaController;
 use App\Http\Controllers\RncController;
 use App\Http\Controllers\TenantController;
 use App\Http\Controllers\TwoStepController;
@@ -142,17 +142,17 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('rnc/{rnc}/revisoes/{revision}/imprimir', [RncController::class, 'revisionPrint'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.print');
         Route::post('rnc/{rnc}/revisoes/{revision}/enviar', [RncController::class, 'send'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.send');
 
-        // Catálogos globais do RNC (Admin/SuperAdmin)
-        Route::get('rnc/catalogos', [RncCatalogoController::class, 'index'])->name('rnc.catalogo.index');
-        Route::post('rnc/catalogos/projetos', [RncCatalogoController::class, 'storeProjeto'])->name('rnc.catalogo.projeto.store');
-        Route::put('rnc/catalogos/projetos/{projeto}', [RncCatalogoController::class, 'updateProjeto'])->name('rnc.catalogo.projeto.update');
-        Route::delete('rnc/catalogos/projetos/{projeto}', [RncCatalogoController::class, 'destroyProjeto'])->name('rnc.catalogo.projeto.destroy');
-        Route::post('rnc/catalogos/criticidades', [RncCatalogoController::class, 'storeCriticidade'])->name('rnc.catalogo.criticidade.store');
-        Route::put('rnc/catalogos/criticidades/{criticidade}', [RncCatalogoController::class, 'updateCriticidade'])->name('rnc.catalogo.criticidade.update');
-        Route::delete('rnc/catalogos/criticidades/{criticidade}', [RncCatalogoController::class, 'destroyCriticidade'])->name('rnc.catalogo.criticidade.destroy');
-        Route::post('rnc/catalogos/classificacoes', [RncCatalogoController::class, 'storeClassificacao'])->name('rnc.catalogo.classificacao.store');
-        Route::put('rnc/catalogos/classificacoes/{classificacao}', [RncCatalogoController::class, 'updateClassificacao'])->name('rnc.catalogo.classificacao.update');
-        Route::delete('rnc/catalogos/classificacoes/{classificacao}', [RncCatalogoController::class, 'destroyClassificacao'])->name('rnc.catalogo.classificacao.destroy');
+        // Categorias globais do RNC (Admin/SuperAdmin)
+        Route::get('rnc/categorias', [RncCategoriaController::class, 'index'])->name('rnc.categoria.index');
+        Route::post('rnc/categorias/projetos', [RncCategoriaController::class, 'storeProjeto'])->name('rnc.categoria.projeto.store');
+        Route::put('rnc/categorias/projetos/{projeto}', [RncCategoriaController::class, 'updateProjeto'])->name('rnc.categoria.projeto.update');
+        Route::delete('rnc/categorias/projetos/{projeto}', [RncCategoriaController::class, 'destroyProjeto'])->name('rnc.categoria.projeto.destroy');
+        Route::post('rnc/categorias/criticidades', [RncCategoriaController::class, 'storeCriticidade'])->name('rnc.categoria.criticidade.store');
+        Route::put('rnc/categorias/criticidades/{criticidade}', [RncCategoriaController::class, 'updateCriticidade'])->name('rnc.categoria.criticidade.update');
+        Route::delete('rnc/categorias/criticidades/{criticidade}', [RncCategoriaController::class, 'destroyCriticidade'])->name('rnc.categoria.criticidade.destroy');
+        Route::post('rnc/categorias/classificacoes', [RncCategoriaController::class, 'storeClassificacao'])->name('rnc.categoria.classificacao.store');
+        Route::put('rnc/categorias/classificacoes/{classificacao}', [RncCategoriaController::class, 'updateClassificacao'])->name('rnc.categoria.classificacao.update');
+        Route::delete('rnc/categorias/classificacoes/{classificacao}', [RncCategoriaController::class, 'destroyClassificacao'])->name('rnc.categoria.classificacao.destroy');
     });
 
     Route::delete('evidencias-prontuario/{evidence}', [ProntuarioController::class, 'destroyEvidence'])

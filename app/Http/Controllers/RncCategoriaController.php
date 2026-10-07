@@ -11,12 +11,12 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 /**
- * Administração dos catálogos GLOBAIS do relatório RNC: projetos, criticidades
- * e classificações de risco. Restrito a Admin/SuperAdmin (diferente do catálogo
- * operacional, que também aceita Manager). Situações e normas técnicas seguem
- * geridas por migrações/seeders.
+ * Administração das CATEGORIAS globais do relatório RNC: projetos,
+ * criticidades e classificações de risco. Restrito a Admin/SuperAdmin
+ * (diferente do catálogo operacional, que também aceita Manager). Situações
+ * e normas técnicas seguem geridas por migrações/seeders.
  */
-class RncCatalogoController extends Controller
+class RncCategoriaController extends Controller
 {
     public function index(Request $request): View
     {
@@ -25,7 +25,7 @@ class RncCatalogoController extends Controller
         $aba = (string) $request->query('aba', 'projetos');
         $aba = in_array($aba, ['projetos', 'criticidades', 'classificacoes'], true) ? $aba : 'projetos';
 
-        return view('rnc.catalogo.index', [
+        return view('rnc.categoria.index', [
             'aba' => $aba,
             'projetos' => Projeto::query()->orderBy('nome')->get(),
             'criticidades' => Criticidade::query()->orderBy('ordem')->orderBy('nome')->get(),

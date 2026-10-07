@@ -65,7 +65,7 @@
                 'label' => 'Administração',
                 'items' => [
                     ['label' => 'Clientes', 'icon' => 'building', 'route' => 'tenants.index', 'match' => 'tenants*', 'visible' => $currentUser->isSuperAdmin()],
-                    ['label' => 'Catálogos RNC', 'icon' => 'alert', 'route' => 'rnc.catalogo.index', 'match' => 'rnc.catalogo.*', 'visible' => $currentUser->isAdmin()],
+                    ['label' => 'Categoria', 'icon' => 'alert', 'route' => 'rnc.categoria.index', 'match' => 'rnc.categoria.*', 'visible' => $currentUser->isAdmin()],
                 ],
             ],
             'configuracoes' => [
