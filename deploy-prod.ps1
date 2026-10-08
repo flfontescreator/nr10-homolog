@@ -54,8 +54,10 @@ try {
     if ($LASTEXITCODE -eq 0) {
         $mode = 'delta'
         $oldSha = (& git rev-parse refs/tags/$Tag).Trim()
-        $changed = @(& git diff --name-only --diff-filter=ACMRTUB "$oldSha" HEAD)
-        $deleted = @(& git diff --name-only --diff-filter=D "$oldSha" HEAD)
+        # --no-renames: sem ele, git diff emparelha D+A como rename (R), o nome
+        # antigo NAO entra em --diff-filter=D e o arquivo morto fica no servidor.
+        $changed = @(& git diff --name-only --no-renames --diff-filter=ACMRTUB "$oldSha" HEAD)
+        $deleted = @(& git diff --name-only --no-renames --diff-filter=D "$oldSha" HEAD)
     } else {
         $mode = 'full (sincronizacao inicial)'
         $changed = @(& git ls-files) | Where-Object { $_ }
@@ -103,7 +105,7 @@ try {
 
     # Paginas autenticadas respondem com redirect (302) para /login; um 500
     # (ex.: ViteException ou view quebrada apos o deploy) sai como status 5xx.
-    foreach ($p in @('/login', '/forgot-password', '/cronograma', '/checklist/documentos', '/documentos')) {
+    foreach ($p in @('/login', '/forgot-password', '/cronograma', '/checklist', '/documentos')) {
         try {
             $r = Invoke-WebRequest -Uri "$BaseUrl$p" -UseBasicParsing -MaximumRedirection 0 -TimeoutSec 30 -ErrorAction Stop
             Write-Host "    $p -> $($r.StatusCode)"
