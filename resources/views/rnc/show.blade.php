@@ -3,6 +3,7 @@
 @section('title', $rnc->code)
 
 @section('content')
+    @php($arquivada = $rnc->status->isArchived())
     @php($normaItensJson = $normas->mapWithKeys(fn ($norma) => [
         (string) $norma->id => $norma->itens->map(fn ($item) => [
             'id' => $item->id,
@@ -15,7 +16,7 @@
         <div>
             <h1>
                 {{ $rnc->code }}
-                <span class="badge {{ $rnc->status->isPublished() ? 'badge-green' : 'badge-neutral' }}">
+                <span class="badge {{ $rnc->status->isPublished() ? 'badge-green' : ($arquivada ? 'badge-archived' : 'badge-neutral') }}">
                     {{ $rnc->status->label() }}
                 </span>
                 <span class="badge badge-blue">{{ $rnc->modelo->label() }}</span>
@@ -27,11 +28,23 @@
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
             <a class="btn btn-secondary" href="{{ route('rnc.index') }}">Voltar</a>
-            <a class="btn btn-secondary" href="{{ route('rnc.edit', $rnc) }}">Editar cabeçalho</a>
+            @if($arquivada)
+                <form method="POST" action="{{ route('rnc.desarquivar', $rnc) }}" style="display:inline">
+                    @csrf
+                    <button class="btn" type="submit">Desarquivar</button>
+                </form>
+            @else
+                <a class="btn btn-secondary" href="{{ route('rnc.edit', $rnc) }}">Editar cabeçalho</a>
+                <form method="POST" action="{{ route('rnc.arquivar', $rnc) }}" style="display:inline"
+                      data-confirm="Arquivar o RNC {{ $rnc->code }}? Ele fica somente leitura até ser desarquivado.">
+                    @csrf
+                    <button class="btn btn-secondary" type="submit">Arquivar</button>
+                </form>
+            @endif
         </div>
     </div>
 
-    @if($publicacaoPendente && $latestRevision)
+    @if($publicacaoPendente && $latestRevision && ! $arquivada)
         <div class="alert alert-warning">
             O relatório publicado (<strong>{{ $latestRevision->label }}</strong>) está desatualizado:
             há alterações que ainda <strong>não estão</strong> no PDF e no link público. Clique em
@@ -75,9 +88,12 @@
     <div class="card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap">
             <h2 class="card-title" style="margin:0">Não conformidades ({{ $rnc->items->count() }})</h2>
-            <button class="btn btn-sm" type="button" data-toggle="nova-nc">+ Nova não conformidade</button>
+            @unless($arquivada)
+                <button class="btn btn-sm" type="button" data-toggle="nova-nc">+ Nova não conformidade</button>
+            @endunless
         </div>
 
+        @unless($arquivada)
         <div class="card" id="nova-nc" style="display:none;margin-top:14px">
             <h3 class="card-title" style="margin-top:0;font-size:15px">Adicionar não conformidade</h3>
             <form method="POST" action="{{ route('rnc.item.store', $rnc) }}">
@@ -146,6 +162,7 @@
                 <button class="btn" type="submit" style="margin-top:12px">Adicionar</button>
             </form>
         </div>
+        @endunless
 
         @if($rnc->items->isEmpty())
             <div class="docs-empty">Nenhuma não conformidade registrada. É preciso ao menos uma para publicar.</div>
@@ -168,7 +185,9 @@
                                     <span class="badge badge-red">Prazo vencido</span>
                                 @endif
                                 <span class="badge badge-neutral">{{ $item->evidences->count() }} evid.</span>
-                                <button class="btn btn-sm btn-secondary" type="button" data-toggle="editar-nc-{{ $item->id }}">Editar</button>
+                                @unless($arquivada)
+                                    <button class="btn btn-sm btn-secondary" type="button" data-toggle="editar-nc-{{ $item->id }}">Editar</button>
+                                @endunless
                             </div>
                         </div>
 
@@ -285,7 +304,12 @@
     <div class="card">
         <h2 class="card-title">Publicar</h2>
 
-        @if($rnc->items->isEmpty())
+        @if($arquivada)
+            <p class="muted">
+                RNC arquivada: o relatório está somente leitura. Desarquive para editar as NCs
+                ou publicar.
+            </p>
+        @elseif($rnc->items->isEmpty())
             <p class="muted">
                 Adicione ao menos uma não conformidade para publicar. Uma publicação exige
                 <strong>título</strong> e <strong>responsável pela emissão</strong> preenchidos,
@@ -403,15 +427,19 @@
                                 <td class="text-right" style="white-space:nowrap">
                                     @unless($linkExpirado)
                                         <a class="btn btn-sm btn-secondary" href="{{ $revision->publicUrl() }}" target="_blank">Abrir link</a>
-                                        <form method="POST" action="{{ route('rnc.revision.send', [$rnc, $revision]) }}" style="display:inline">
+                                        @unless($arquivada)
+                                            <form method="POST" action="{{ route('rnc.revision.send', [$rnc, $revision]) }}" style="display:inline">
+                                                @csrf
+                                                <button class="btn btn-sm btn-secondary" type="submit">Enviar</button>
+                                            </form>
+                                        @endunless
+                                    @endunless
+                                    @unless($arquivada)
+                                        <form method="POST" action="{{ route('rnc.revision.link.renew', [$rnc, $revision]) }}" style="display:inline">
                                             @csrf
-                                            <button class="btn btn-sm btn-secondary" type="submit">Enviar</button>
+                                            <button class="btn btn-sm btn-secondary" type="submit">Renovar link</button>
                                         </form>
                                     @endunless
-                                    <form method="POST" action="{{ route('rnc.revision.link.renew', [$rnc, $revision]) }}" style="display:inline">
-                                        @csrf
-                                        <button class="btn btn-sm btn-secondary" type="submit">Renovar link</button>
-                                    </form>
                                 </td>
                             </tr>
                         @endforeach

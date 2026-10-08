@@ -5,11 +5,11 @@ use App\Http\Controllers\AuditController;
 use App\Http\Controllers\Auth\ForgotPasswordController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\ResetPasswordController;
-use App\Http\Controllers\ChecklistController;
 use App\Http\Controllers\CronogramaController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoController;
 use App\Http\Controllers\FuncionarioController;
+use App\Http\Controllers\NaoConformidadeController;
 use App\Http\Controllers\NcDocumentController;
 use App\Http\Controllers\ProntuarioCatalogController;
 use App\Http\Controllers\ProntuarioController;
@@ -94,10 +94,7 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::post('funcionarios/{funcionario}/itens/{item}/evidencias', [FuncionarioController::class, 'uploadItemEvidence'])->name('funcionarios.item.evidencia.upload');
         Route::delete('funcionarios/{funcionario}/itens/{item}/evidencias/{evidence}', [FuncionarioController::class, 'destroyItemEvidence'])->name('funcionarios.item.evidencia.destroy');
 
-        Route::get('checklist', [ChecklistController::class, 'index'])->name('checklist.index');
-        Route::get('checklist/{item}', [ChecklistController::class, 'show'])->name('checklist.show');
-        Route::put('checklist/{item}', [ChecklistController::class, 'update'])->name('checklist.update');
-        Route::post('checklist/{item}/evidencias', [ChecklistController::class, 'uploadEvidence'])->name('checklist.evidencia.upload');
+        Route::get('checklist', [NaoConformidadeController::class, 'index'])->name('checklist.index');
 
         Route::get('checklist/documentos/novo', [NcDocumentController::class, 'create'])->name('nc-documents.create');
         Route::post('checklist/documentos', [NcDocumentController::class, 'store'])->name('nc-documents.store');
@@ -142,6 +139,9 @@ Route::middleware(['auth', '2fa'])->group(function () {
         Route::get('rnc/{rnc}/revisoes/{revision}/imprimir', [RncController::class, 'revisionPrint'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.print');
         Route::post('rnc/{rnc}/revisoes/{revision}/enviar', [RncController::class, 'send'])->whereNumber(['rnc', 'revision'])->name('rnc.revision.send');
 
+        Route::post('rnc/{rnc}/arquivar', [RncController::class, 'arquivar'])->whereNumber('rnc')->name('rnc.arquivar');
+        Route::post('rnc/{rnc}/desarquivar', [RncController::class, 'desarquivar'])->whereNumber('rnc')->name('rnc.desarquivar');
+
         // Categorias globais do RNC (Admin/SuperAdmin)
         Route::get('rnc/categorias', [RncCategoriaController::class, 'index'])->name('rnc.categoria.index');
         Route::post('rnc/categorias/projetos', [RncCategoriaController::class, 'storeProjeto'])->name('rnc.categoria.projeto.store');
@@ -157,8 +157,6 @@ Route::middleware(['auth', '2fa'])->group(function () {
 
     Route::delete('evidencias-prontuario/{evidence}', [ProntuarioController::class, 'destroyEvidence'])
         ->name('evidencia.destroy-prontuario');
-    Route::delete('evidencias-checklist/{evidence}', [ChecklistController::class, 'destroyEvidence'])
-        ->name('evidencia.destroy-checklist');
 
     // ---- Clientes (super admin) ----
     Route::get('tenants/cnpj/{cnpj}', [TenantController::class, 'lookupCnpj'])->name('tenants.cnpj-lookup');

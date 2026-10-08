@@ -16,11 +16,17 @@
     </div>
 
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-        <form method="GET" action="{{ route('rnc.index') }}" style="display:flex;gap:8px;margin-left:auto">
+        <form method="GET" action="{{ route('rnc.index') }}" style="display:flex;gap:8px;margin-left:auto;align-items:center;flex-wrap:wrap">
+            <select name="situacao" aria-label="Situação">
+                <option value="todos" @selected($situacao === 'todos')>Todos</option>
+                <option value="rascunho" @selected($situacao === 'rascunho')>Rascunho</option>
+                <option value="publicado" @selected($situacao === 'publicado')>Publicado</option>
+                <option value="arquivado" @selected($situacao === 'arquivado')>Arquivado</option>
+            </select>
             <input type="search" name="q" value="{{ $busca }}" placeholder="Buscar por código ou título"
                    style="min-width:240px">
             <button class="btn btn-sm" type="submit">Buscar</button>
-            @if($busca)
+            @if($busca || $situacao !== 'todos')
                 <a class="btn btn-sm btn-secondary" href="{{ route('rnc.index') }}">Limpar</a>
             @endif
         </form>
@@ -30,6 +36,8 @@
         <div class="card docs-empty">
             @if($busca)
                 Nenhum RNC encontrado para “{{ $busca }}”.
+            @elseif($situacao !== 'todos')
+                Nenhum RNC no filtro selecionado.
             @else
                 Nenhum relatório criado ainda.
                 <a href="{{ route('rnc.create') }}">Crie o primeiro RNC</a> para começar.
@@ -75,22 +83,24 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <span class="badge {{ $rnc->status->isPublished() ? 'badge-green' : 'badge-neutral' }}">
+                                    <span class="badge {{ $rnc->status->isPublished() ? 'badge-green' : ($rnc->status->isArchived() ? 'badge-archived' : 'badge-neutral') }}">
                                         {{ $rnc->status->label() }}
                                     </span>
                                 </td>
                                 <td class="text-right" style="white-space:nowrap">
                                     <a class="btn btn-sm" href="{{ route('rnc.show', $rnc) }}">Abrir</a>
-                                    <a class="btn btn-sm btn-secondary" href="{{ route('rnc.edit', $rnc) }}">Editar</a>
-                                    @if(auth()->user()?->canDelete())
-                                        <form method="POST" action="{{ route('rnc.destroy', $rnc) }}"
-                                              style="display:inline"
-                                              data-confirm="Excluir o RNC {{ $rnc->code }}? Isso apaga as não conformidades, as evidências, as revisões/PDF e o link público.">
-                                            @csrf
-                                            @method('DELETE')
-                                            <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
-                                        </form>
-                                    @endif
+                                    @unless($rnc->status->isArchived())
+                                        <a class="btn btn-sm btn-secondary" href="{{ route('rnc.edit', $rnc) }}">Editar</a>
+                                        @if(auth()->user()?->canDelete())
+                                            <form method="POST" action="{{ route('rnc.destroy', $rnc) }}"
+                                                  style="display:inline"
+                                                  data-confirm="Excluir o RNC {{ $rnc->code }}? Isso apaga as não conformidades, as evidências, as revisões/PDF e o link público.">
+                                                @csrf
+                                                @method('DELETE')
+                                                <button class="btn btn-sm btn-danger" type="submit">Excluir</button>
+                                            </form>
+                                        @endif
+                                    @endunless
                                 </td>
                             </tr>
                         @endforeach

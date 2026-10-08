@@ -53,14 +53,16 @@ class RncController extends Controller
         $this->authorizeWrite();
 
         $situacao = $request->query('situacao', 'todos');
-        $situacao = in_array($situacao, ['todos', 'rascunho', 'publicado'], true) ? $situacao : 'todos';
+        $situacao = in_array($situacao, ['todos', 'rascunho', 'publicado', 'arquivado'], true) ? $situacao : 'todos';
 
         $query = Rnc::query()
             ->where('tenant_id', TenantContext::id())
             ->with('projeto')
             ->withCount(['items', 'revisions']);
 
-        if ($situacao === 'rascunho') {
+        if ($situacao === 'arquivado') {
+            $query->where('status', RncStatus::Arquivado->value);
+        } elseif ($situacao === 'rascunho') {
             $query->where('status', RncStatus::Rascunho->value);
         } elseif ($situacao === 'publicado') {
             $query->where('status', RncStatus::Publicado->value);
@@ -241,6 +243,71 @@ class RncController extends Controller
         return redirect()
             ->route('rnc.index')
             ->with('success', sprintf('RNC %s excluído.', $code));
+    }
+
+    // ------------------------------------------------------------------
+    // Arquivamento (estado final: somente leitura até desarquivar)
+    // ------------------------------------------------------------------
+
+    /**
+     * Arquiva a RNC (Admin/Gestor). A partir daqui o relatório fica congelado:
+     * nenhuma alteração passa (ver `authorizeTenant()`), a tag "Arquivada"
+     * aparece no índice e no grid de Não Conformidades.
+     */
+    public function arquivar(Request $request, Rnc $rnc): RedirectResponse
+    {
+        $this->authorizeWrite();
+        $this->authorizeTenant($rnc);
+
+        $antes = ['status' => $rnc->status->value];
+
+        $rnc->update([
+            'status' => RncStatus::Arquivado,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        Audit::record(
+            'rnc.archive',
+            sprintf('RNC %s arquivada', $rnc->code),
+            $rnc,
+            null,
+            $antes,
+            ['status' => $rnc->status->value],
+            $request->user()
+        );
+
+        return back()->with('success', sprintf('RNC %s arquivada. Ela ficou somente leitura até ser desarquivada.', $rnc->code));
+    }
+
+    /**
+     * Desarquiva a RNC: volta para "Publicado" quando já houve revisão
+     * oficial, senão para "Rascunho".
+     */
+    public function desarquivar(Request $request, Rnc $rnc): RedirectResponse
+    {
+        $this->authorizeWrite();
+        $this->authorizeTenant($rnc, allowArchived: true);
+
+        $antes = ['status' => $rnc->status->value];
+
+        $destino = $rnc->current_revision > 0 ? RncStatus::Publicado : RncStatus::Rascunho;
+
+        $rnc->update([
+            'status' => $destino,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        Audit::record(
+            'rnc.unarchive',
+            sprintf('RNC %s desarquivada', $rnc->code),
+            $rnc,
+            null,
+            $antes,
+            ['status' => $rnc->status->value],
+            $request->user()
+        );
+
+        return back()->with('success', sprintf('RNC %s desarquivada: status %s.', $rnc->code, $destino->label()));
     }
 
     // ------------------------------------------------------------------
@@ -736,9 +803,18 @@ class RncController extends Controller
         abort_unless(request()->user()?->canWrite(), 403);
     }
 
-    protected function authorizeTenant(Rnc $rnc): void
+    protected function authorizeTenant(Rnc $rnc, bool $allowArchived = false): void
     {
         abort_unless($rnc->tenant_id === TenantContext::id(), 404);
+
+        // RNC arquivada é somente leitura: toda alteração (POST/PUT/DELETE)
+        // responde 409 até ser desarquivada — inclusive endpoints criados no
+        // futuro. Leituras (GET) e a própria ação de desarquivar passam.
+        abort_if(
+            ! $allowArchived && $rnc->status->isArchived() && ! request()->isMethod('GET'),
+            409,
+            'RNC arquivada. Desarquive para fazer alterações.'
+        );
     }
 
     protected function authorizeItemBelongsToRnc(Rnc $rnc, RncItem $item): void

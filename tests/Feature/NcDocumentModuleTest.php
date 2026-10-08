@@ -164,7 +164,7 @@ class NcDocumentModuleTest extends TestCase
         $this->assertLessThan($posItem81, $posSec8);
     }
 
-    public function test_checklist_grid_shows_report_type_badges_per_document(): void
+    public function test_document_show_shows_report_type_badges_per_document(): void
     {
         $normativaId = $this->catalogIds(1)[0];
 
@@ -182,17 +182,21 @@ class NcDocumentModuleTest extends TestCase
                 ->assertRedirect();
         }
 
-        $html = $this->actingAs($this->manager)
-            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
-            ->get(route('checklist.index'))
-            ->assertOk()
-            ->getContent();
+        [$normativo, $operacional, $misto] = NcDocument::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant->id)
+            ->orderBy('number')
+            ->get();
 
-        // Normativa aparece no doc normativo e no misto; Operacional no doc
-        // operacional e no misto. Se o tipo de relatório fosse marcado errado,
-        // as contagens divergiriam.
-        $this->assertSame(2, substr_count($html, 'Normativa'));
-        $this->assertSame(2, substr_count($html, 'Operacional'));
+        $ver = fn (NcDocument $document) => $this->actingAs($this->manager)
+            ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
+            ->get(route('nc-documents.show', $document))
+            ->assertOk();
+
+        // O badge de fonte vem do item do documento: se o tipo de relatório
+        // fosse marcado errado, o documento mostraria a outra palavra.
+        $ver($normativo)->assertSee('Normativa')->assertDontSee('Operacional');
+        $ver($operacional)->assertSee('Operacional')->assertDontSee('Normativa');
+        $ver($misto)->assertSee('Normativa')->assertSee('Operacional');
     }
 
     public function test_manager_can_create_document_with_selection(): void
@@ -1367,12 +1371,12 @@ class NcDocumentModuleTest extends TestCase
     {
         $item = TenantItem::withoutGlobalScopes()
             ->where('tenant_id', $this->tenant->id)
-            ->whereHas('catalogItem', fn ($q) => $q->where('source', 'checklist')->where('code', '1'))
+            ->whereHas('catalogItem', fn ($q) => $q->where('source', 'cronograma')->where('is_section', false))
             ->firstOrFail();
 
         $this->actingAs($this->manager)
             ->withSession(['tenant_id' => $this->tenant->id, 'two_step_verified' => true])
-            ->put(route('checklist.update', $item), [
+            ->put(route('cronograma.update', $item), [
                 'data_inspecao' => '2026-09-01',
                 'status' => 'Em andamento',
             ])

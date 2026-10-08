@@ -22,7 +22,7 @@ Catálogo FIXO vem de planilhas CSV (`storage/app/imports`) → `catalog_items`
 ## Módulos (rotas em `routes/web.php`)
 - **Cronograma de Adequação** (`cronograma.*`, grupo `tenant`): árvore seções +
   subitens (source=cronograma) com campos de controle por cliente em `tenant_items`.
-- **Não Conformidades / Documentos** (`nc-documents.*` + `checklist.index`):
+- **Não Conformidades / Documentos** (`nc-documents.*`):
   documento DN-XX; seleção = seções + subitens DO CRONOGRAMA; versões/snapshots;
   finalizar/reabrir. Estado de trabalho por documento em `nc_document_items`
   (cópia própria); plano/cronograma nunca trava;
@@ -32,8 +32,11 @@ Catálogo FIXO vem de planilhas CSV (`storage/app/imports`) → `catalog_items`
   (evidência ↔ sub-item de DN, contexto de anexo) e `evidence_tenant_item`
   (evidência ↔ sub-item do plano); `tenant_item_id` na evidência é âncora/origem.
   Regras completas em `decisions.md` (Fases 1, 5, 6 e 7).
-- **Checklist legado** (`checklist.*`, source=checklist): registros históricos;
-  `checklist.index` hoje lista os documentos, não os itens antigos.
+- **Não Conformidades — grid** (`checklist.index` → `NaoConformidadeController`):
+  datagrid somente leitura, uma linha por NC, fonte atual = RNC (matriz de
+  classificação e filtros em `decisions.md` Fase 12). As rotas/views de edição
+  do checklist antigo (`checklist.show/update/evidencia.*`) foram removidas;
+  `source=checklist` segue no catálogo só como histórico.
 - **Prontuário** (`prontuario.*`): subitens do item 4 por funcionário
   (`funcionario_id`), criados por `Funcionario::bootstrapProntuarioItems()`.
 - **Auditoria** (`auditoria.index`): log global (veja § Auditoria).

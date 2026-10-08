@@ -754,6 +754,13 @@ table.grid.docs-grid th {
     color: #b45309;
 }
 
+/* RNC arquivada: cinza escurecido para diferenciar do badge-neutral. */
+.badge-archived {
+    background: #e2e8f0;
+    color: #334155;
+    border: 1px solid #94a3b8;
+}
+
 .crit-alta {
     background: #fee2e2;
     color: #b91c1c;

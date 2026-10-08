@@ -273,6 +273,46 @@ Só o **documento de NC** continua restrito a `local`/`testing`:
 
 **CHECKLIST DE REMOÇÃO (obrigatório antes de qualquer deploy):**
 - [ ] Remover `NcDocumentController::destroy()` + rota `nc-documents.destroy`.
-- [ ] Remover os botões "Excluir (teste)" de `nc-documents/show` e `checklist/index`.
+- [ ] Remover os botões "Excluir (teste)" de `nc-documents/show` (o de
+      `checklist/index` sumiu junto com a view antiga — Fase 12).
 - [ ] Remover/inverter os testes de hard delete de documento NC.
 - [ ] Confirmar `php artisan test --compact` verde + Pint limpo.
+
+## Fase 12 — Grid de Não Conformidades (somente leitura) + arquivamento de RNC
+Área: `NaoConformidadeController`, `resources/views/nao-conformidades/index.blade.php`,
+rota `checklist.index`; `RncStatus::Arquivado`, `RncController::{arquivar,desarquivar}`;
+`resources/views/rnc/{index,show}`; testes `NaoConformidadeGridTest`, `RncArchiveTest`,
+`ChecklistModuleTest`.
+
+- **`/checklist` virou datagrid somente leitura** (decisão do usuário): agrega as NCs
+  dos módulos em uma linha por NC; fonte atual = RNC (`rnc_items` via join em `rncs`);
+  as demais fontes (Prontuário, Cronograma, Documentos) entram depois. Telas DN
+  (`nc-documents.*`) e cronograma continuam de pé.
+- **Removidos**: `ChecklistController`, `ChecklistOptions`, views `checklist/*`
+  (index/show) e rotas `checklist.show`, `checklist.update`,
+  `checklist.evidencia.upload`, `evidencia.destroy-checklist` (resta só
+  `checklist.index`). `ChecklistModuleTest` agora só cobre catálogo/bootstrap +
+  ausência das rotas antigas.
+- **Classificação única** em `NaoConformidadeController::classificacaoSql()`: expressão
+  CASE reutilizada em SELECT, WHERE e ORDER BY (nunca divergem). Matriz: situação nula →
+  NC + tag "Não conformidade não preenchida adequitamente"; Pendente/Não adequado/Não
+  conforme → NC; Conforme+prazo nulo → NC + tag "Sem prazo de adequação"; Conforme+prazo
+  vencido sem `data_adequacao` → NC; o resto (inclusive "Não avaliado") → Em
+  conformidade; RNC arquivada → mesmo cálculo + tag "Arquivada".
+- Filtros: `classificacao` (default `nao_conformidade`, `''` = Todos), `de`/`ate`
+  (sobre `rncs.data_inspecao`), `ordem` desc (padrão) / asc; paginação 25
+  (`withQueryString()`); ordem: NC primeiro → prazo vencido primeiro → `data_inspecao`
+  (null por último) → direção → `rncs.code` → `numero`. Visível para qualquer papel
+  (`podeAbrir` por linha = `canWrite`).
+- **Armadilha `ConvertEmptyStringsToNull`**: `?classificacao=` chega como `null` no bag
+  e `$request->query($chave, $default)` devolve o DEFAULT (`??` engole null) — a opção
+  "Todos" do formulário cairia no filtro padrão. Distinguir ausente de vazio lendo
+  `$request->query->all()` + `array_key_exists`. Vale para QUALQUER filtro com valor
+  vazio.
+- **Arquivamento de RNC**: `RncStatus::Arquivado` (badge `badge-archived`) + `POST
+  rnc/{rnc}/arquivar|desarquivar` (Admin+Gestor, `canWrite`). `authorizeTenant(Rnc,
+  $allowArchived = false)` aborta **409 em todo método não-GET** de RNC arquivada
+  (situação congelada; cobre endpoints futuros); desarquivar volta a `Publicado` se
+  `current_revision > 0`, senão `Rascunho`. Índice `/rnc`: 4ª opção de filtro
+  "Arquivado" (`todos` inalterado) + badge; show esconde Editar/Excluir/"+ Nova NC" e
+  publicação quando arquivada. Auditoria `rnc.archive`/`rnc.unarchive`.
